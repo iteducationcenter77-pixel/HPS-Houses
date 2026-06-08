@@ -147,7 +147,7 @@ export async function loadSchoolLogo() {
   const { isConfigured, supabase } = await import('./supabase.js');
   if (!isConfigured()) return;
   try {
-    const { data } = await supabase.from('admin_settings').select('school_logo_url').eq('id', 1).single();
+    const { data } = await supabase.from('admin_settings').select('school_logo_url').eq('id', 1).maybeSingle();
     if (data && data.school_logo_url) {
       const url = convertGDriveUrl(data.school_logo_url);
       
