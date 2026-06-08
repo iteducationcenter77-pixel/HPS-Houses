@@ -139,3 +139,22 @@ export function initialsAvatar(name, color = '#8a94a6') {
   const initials = name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
   return `<div class="avatar" style="background:${color}15;color:${color};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;">${initials}</div>`;
 }
+
+/**
+ * Fetch and apply the global school logo from admin_settings
+ */
+export async function loadSchoolLogo() {
+  const { isConfigured, supabase } = await import('./supabase.js');
+  if (!isConfigured()) return;
+  try {
+    const { data } = await supabase.from('admin_settings').select('school_logo_url').eq('id', 1).single();
+    if (data && data.school_logo_url) {
+      const url = convertGDriveUrl(data.school_logo_url);
+      document.querySelectorAll('img[alt="HPS Logo"]').forEach(img => {
+        img.src = url;
+      });
+    }
+  } catch (e) {
+    console.error('Failed to load school logo:', e);
+  }
+}

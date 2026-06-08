@@ -1,11 +1,24 @@
 // ============================================
-// Auth Module — Simple password-based admin auth
+// Auth Module — Supabase Authentication
 // ============================================
 
 import { supabase, isConfigured } from './supabase.js';
 
-const SESSION_KEY = 'hps_admin_session';
 const DEMO_PASSWORD = 'admin123';
+const ADMIN_EMAIL = 'admin@hps.edu';
+
+let sessionCache = null;
+
+// Listen for auth state changes
+if (isConfigured()) {
+  supabase.auth.getSession().then(({ data: { session } }) => {
+    sessionCache = session;
+  });
+
+  supabase.auth.onAuthStateChange((_event, session) => {
+    sessionCache = session;
+  });
+}
 
 /**
  * Attempt login
@@ -14,38 +27,46 @@ export async function login(password) {
   if (!isConfigured()) {
     // Demo mode
     if (password === DEMO_PASSWORD) {
-      sessionStorage.setItem(SESSION_KEY, 'demo');
-      return true;
+      sessionStorage.setItem('hps_admin_session', 'demo');
+      return { success: true };
     }
-    return false;
+    return { success: false, message: 'Invalid password' };
   }
 
-  const { data, error } = await supabase
-    .from('admin_settings')
-    .select('admin_password_hash')
-    .eq('id', 1)
-    .single();
+  // Real Supabase Auth
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: ADMIN_EMAIL,
+    password: password
+  });
 
-  if (error || !data) return false;
-  if (data.admin_password_hash === password) {
-    sessionStorage.setItem(SESSION_KEY, 'authenticated');
-    return true;
+  if (error) {
+    return { success: false, message: error.message };
   }
-  return false;
+  
+  sessionCache = data.session;
+  return { success: true };
 }
 
 /**
  * Check if admin is logged in
  */
 export function isLoggedIn() {
-  return !!sessionStorage.getItem(SESSION_KEY);
+  if (!isConfigured()) {
+    return !!sessionStorage.getItem('hps_admin_session');
+  }
+  return !!sessionCache;
 }
 
 /**
  * Logout
  */
-export function logout() {
-  sessionStorage.removeItem(SESSION_KEY);
+export async function logout() {
+  if (!isConfigured()) {
+    sessionStorage.removeItem('hps_admin_session');
+    return;
+  }
+  await supabase.auth.signOut();
+  sessionCache = null;
 }
 
 /**
@@ -56,21 +77,24 @@ export async function changePassword(currentPwd, newPwd) {
     return { success: true, message: 'Password updated (demo mode)' };
   }
 
-  const { data } = await supabase
-    .from('admin_settings')
-    .select('admin_password_hash')
-    .eq('id', 1)
-    .single();
+  // With Supabase Auth, we first re-authenticate to verify the current password
+  const { error: signInError } = await supabase.auth.signInWithPassword({
+    email: ADMIN_EMAIL,
+    password: currentPwd
+  });
 
-  if (!data || data.admin_password_hash !== currentPwd) {
+  if (signInError) {
     return { success: false, message: 'Current password is incorrect' };
   }
 
-  const { error } = await supabase
-    .from('admin_settings')
-    .update({ admin_password_hash: newPwd, updated_at: new Date().toISOString() })
-    .eq('id', 1);
+  // Then we update to the new password
+  const { error: updateError } = await supabase.auth.updateUser({
+    password: newPwd
+  });
 
-  if (error) return { success: false, message: 'Failed to update password' };
+  if (updateError) {
+    return { success: false, message: updateError.message };
+  }
+  
   return { success: true, message: 'Password updated successfully' };
 }

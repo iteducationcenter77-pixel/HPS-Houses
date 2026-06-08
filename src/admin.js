@@ -12,10 +12,11 @@ import { login, isLoggedIn, logout, changePassword } from './js/auth.js';
 import { renderHousesPage, getHouses } from './js/houses.js';
 import { renderStudentsPage } from './js/students.js';
 import { renderCompetitionsPage } from './js/competitions.js';
-import { showToast, escapeHtml } from './js/utils.js';
+import { showToast, escapeHtml, loadSchoolLogo } from './js/utils.js';
 import { isConfigured } from './js/supabase.js';
 
 document.addEventListener('DOMContentLoaded', () => {
+  loadSchoolLogo();
   const loginPage = document.getElementById('login-page');
   const adminPanel = document.getElementById('admin-panel');
   const loginForm = document.getElementById('login-form');
@@ -150,34 +151,59 @@ document.addEventListener('DOMContentLoaded', () => {
     `;
 
     // Load stats
-    const houses = await getHouses();
-    const statsGrid = document.getElementById('admin-stats');
-    if (statsGrid && houses.length) {
-      const houseOrder = ['Orion', 'Titans', 'Phoenix', 'Spartans'];
-      const cards = statsGrid.querySelectorAll('.stat-card');
-      houseOrder.forEach((name, i) => {
-        const h = houses.find(x => x.name === name);
-        if (h && cards[i]) cards[i].querySelector('.stat-value').textContent = h.total_points;
-      });
-    }
+    try {
+      const houses = await getHouses();
+      const statsGrid = document.getElementById('admin-stats');
+      if (statsGrid && houses.length) {
+        const houseOrder = ['Orion', 'Titans', 'Phoenix', 'Spartans'];
+        const cards = statsGrid.querySelectorAll('.stat-card');
+        houseOrder.forEach((name, i) => {
+          const h = houses.find(x => x.name === name);
+          if (h && cards[i]) cards[i].querySelector('.stat-value').textContent = h.total_points;
+        });
+      }
 
-    if (configured) {
-      const { count: studentCount } = await (await import('./js/supabase.js')).supabase.from('students').select('*', { count: 'exact', head: true }).eq('is_active', true);
-      const { count: compCount } = await (await import('./js/supabase.js')).supabase.from('competitions').select('*', { count: 'exact', head: true });
-      const totalPts = houses.reduce((s, h) => s + (h.total_points || 0), 0);
-      const el1 = document.getElementById('stat-students');
-      const el2 = document.getElementById('stat-comps');
-      const el3 = document.getElementById('stat-total-pts');
-      if (el1) el1.textContent = studentCount || 0;
-      if (el2) el2.textContent = compCount || 0;
-      if (el3) el3.textContent = totalPts;
+      if (configured) {
+        const { supabase } = await import('./js/supabase.js');
+        const { count: studentCount, error: sErr } = await supabase.from('students').select('*', { count: 'exact', head: true }).eq('is_active', true);
+        if (!sErr && document.getElementById('stat-students')) document.getElementById('stat-students').textContent = studentCount || 0;
+
+        const { count: compCount, error: cErr } = await supabase.from('competitions').select('*', { count: 'exact', head: true });
+        if (!cErr && document.getElementById('stat-comps')) document.getElementById('stat-comps').textContent = compCount || 0;
+
+        const totalPts = houses.reduce((s, h) => s + (h.total_points || 0), 0);
+        if (document.getElementById('stat-total-pts')) document.getElementById('stat-total-pts').textContent = totalPts;
+      }
+    } catch (err) {
+      console.error('Error loading dashboard stats:', err);
     }
   }
 
   // Settings Page
-  function renderSettingsPage(container) {
+  async function renderSettingsPage(container) {
+    let logoUrl = '';
+    if (isConfigured()) {
+      try {
+        const { supabase } = await import('./js/supabase.js');
+        const { data } = await supabase.from('admin_settings').select('school_logo_url').eq('id', 1).single();
+        if (data) logoUrl = data.school_logo_url || '';
+      } catch (err) { console.error('Error fetching logo', err); }
+    }
+
     container.innerHTML = `
       <div style="max-width:500px">
+        <div class="table-container" style="margin-bottom:var(--space-xl)">
+          <div class="table-header"><h3>School Logo</h3></div>
+          <div style="padding:var(--space-xl)">
+            <form id="logo-form">
+              <div class="form-group">
+                <label class="form-label">School Logo URL (Google Drive)</label>
+                <input class="form-input" type="text" id="school-logo" value="${escapeHtml(logoUrl)}" placeholder="Paste Google Drive share link">
+              </div>
+              <button type="submit" class="btn btn-primary">Update Logo</button>
+            </form>
+          </div>
+        </div>
         <div class="table-container" style="margin-bottom:var(--space-xl)">
           <div class="table-header"><h3>Change Admin Password</h3></div>
           <div style="padding:var(--space-xl)">
@@ -188,7 +214,7 @@ document.addEventListener('DOMContentLoaded', () => {
               </div>
               <div class="form-group">
                 <label class="form-label">New Password</label>
-                <input class="form-input" type="password" id="new-pwd" required minlength="4">
+                <input class="form-input" type="password" id="new-pwd" required minlength="6">
               </div>
               <button type="submit" class="btn btn-primary">Update Password</button>
             </form>
@@ -204,6 +230,21 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
       </div>
     `;
+
+    document.getElementById('logo-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!isConfigured()) return showToast('Cannot update logo in demo mode', 'error');
+      
+      const newUrl = document.getElementById('school-logo').value;
+      const { supabase } = await import('./js/supabase.js');
+      const { error } = await supabase.from('admin_settings').upsert({ id: 1, school_logo_url: newUrl, updated_at: new Date().toISOString() });
+      
+      if (error) showToast('Failed to update logo', 'error');
+      else {
+        showToast('School logo updated!', 'success');
+        import('./js/utils.js').then(m => m.loadSchoolLogo());
+      }
+    });
 
     document.getElementById('password-form').addEventListener('submit', async (e) => {
       e.preventDefault();

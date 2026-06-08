@@ -58,7 +58,6 @@ CREATE TABLE IF NOT EXISTS participation (
 -- ── Admin Settings Table ──
 CREATE TABLE IF NOT EXISTS admin_settings (
   id INTEGER PRIMARY KEY DEFAULT 1,
-  admin_password_hash TEXT NOT NULL,
   school_logo_url TEXT,
   updated_at TIMESTAMPTZ DEFAULT now()
 );
@@ -84,10 +83,11 @@ CREATE POLICY "Public read houses" ON houses FOR SELECT USING (true);
 CREATE POLICY "Public read students" ON students FOR SELECT USING (true);
 CREATE POLICY "Public read competitions" ON competitions FOR SELECT USING (true);
 CREATE POLICY "Public read participation" ON participation FOR SELECT USING (true);
+CREATE POLICY "Public read settings" ON admin_settings FOR SELECT USING (true);
 
--- Admin full access (using anon key for simplicity — password checked in app)
-CREATE POLICY "Admin manage houses" ON houses FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Admin manage students" ON students FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Admin manage competitions" ON competitions FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Admin manage participation" ON participation FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Admin manage settings" ON admin_settings FOR ALL USING (true) WITH CHECK (true);
+-- Admin full access (requires Supabase Authentication)
+CREATE POLICY "Admin manage houses" ON houses FOR ALL USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
+CREATE POLICY "Admin manage students" ON students FOR ALL USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
+CREATE POLICY "Admin manage competitions" ON competitions FOR ALL USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
+CREATE POLICY "Admin manage participation" ON participation FOR ALL USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
+CREATE POLICY "Admin manage settings" ON admin_settings FOR ALL USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);

@@ -9,6 +9,7 @@ import './css/components.css';
 import './css/dashboard.css';
 
 import { initDashboard } from './js/dashboard.js';
+import { loadSchoolLogo } from './js/utils.js';
 
 // Mobile nav toggle
 document.addEventListener('DOMContentLoaded', () => {
@@ -20,6 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
     nav.querySelectorAll('a').forEach(a => a.addEventListener('click', () => nav.classList.remove('open')));
   }
 
-  // Init dashboard
+  // Load logo & Init dashboard
+  loadSchoolLogo();
   initDashboard();
 });
