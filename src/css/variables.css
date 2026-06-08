@@ -1,0 +1,105 @@
+/* ============================================
+   HPS House Management System — Design Tokens
+   ============================================ */
+
+:root {
+  /* ── Primary Colors ── */
+  --primary: #0a1628;
+  --primary-light: #132240;
+  --primary-mid: #1a2d52;
+  --primary-surface: #1e3461;
+
+  /* ── Accent ── */
+  --accent: #f0c244;
+  --accent-hover: #d4a930;
+  --accent-light: rgba(240, 194, 68, 0.15);
+  --accent-glow: rgba(240, 194, 68, 0.3);
+
+  /* ── Neutrals ── */
+  --white: #ffffff;
+  --off-white: #f4f6fa;
+  --surface: #eef1f7;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-light: rgba(10, 22, 40, 0.08);
+  --text-primary: #ffffff;
+  --text-secondary: #c0c8d8;
+  --text-muted: #8a94a6;
+  --text-dark: #0a1628;
+  --text-dark-secondary: #4a5568;
+
+  /* ── House Colors ── */
+  --orion: #f0c244;
+  --orion-bg: rgba(240, 194, 68, 0.12);
+  --orion-glow: rgba(240, 194, 68, 0.4);
+
+  --titans: #2ecc71;
+  --titans-bg: rgba(46, 204, 113, 0.12);
+  --titans-glow: rgba(46, 204, 113, 0.4);
+
+  --phoenix: #e74c3c;
+  --phoenix-bg: rgba(231, 76, 60, 0.12);
+  --phoenix-glow: rgba(231, 76, 60, 0.4);
+
+  --spartans: #3498db;
+  --spartans-bg: rgba(52, 152, 219, 0.12);
+  --spartans-glow: rgba(52, 152, 219, 0.4);
+
+  /* ── Status Colors ── */
+  --success: #2ecc71;
+  --warning: #f39c12;
+  --danger: #e74c3c;
+  --info: #3498db;
+
+  /* ── Typography ── */
+  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-xs: 0.75rem;
+  --font-sm: 0.875rem;
+  --font-base: 1rem;
+  --font-md: 1.125rem;
+  --font-lg: 1.25rem;
+  --font-xl: 1.5rem;
+  --font-2xl: 2rem;
+  --font-3xl: 2.5rem;
+  --font-4xl: 3.5rem;
+
+  /* ── Spacing ── */
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2rem;
+  --space-2xl: 3rem;
+  --space-3xl: 4rem;
+
+  /* ── Border Radius ── */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-full: 50%;
+
+  /* ── Shadows ── */
+  --shadow-sm: 0 2px 8px rgba(10, 22, 40, 0.08);
+  --shadow-md: 0 4px 16px rgba(10, 22, 40, 0.12);
+  --shadow-lg: 0 8px 32px rgba(10, 22, 40, 0.16);
+  --shadow-xl: 0 16px 48px rgba(10, 22, 40, 0.24);
+  --shadow-glow: 0 0 30px var(--accent-glow);
+
+  /* ── Glass Effect ── */
+  --glass-bg: rgba(19, 34, 64, 0.85);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-blur: blur(12px);
+
+  /* ── Transitions ── */
+  --transition-fast: all 0.15s ease;
+  --transition-base: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-spring: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* ── Z-Index ── */
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-modal-backdrop: 300;
+  --z-modal: 400;
+  --z-toast: 500;
+}

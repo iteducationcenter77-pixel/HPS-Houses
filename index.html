@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Howly Public School House Management System - Track house points, competitions, and student achievements across Orion, Titans, Phoenix, and Spartans houses.">
+  <meta name="theme-color" content="#0a1628">
+  <title>HPS House System | Howly Public School</title>
+  <link rel="icon" type="image/png" href="/hps-logo.png">
+</head>
+<body>
+
+  <!-- Navbar -->
+  <nav class="navbar" id="navbar">
+    <a href="/" class="navbar-brand">
+      <img src="/hps-logo.png" alt="HPS Logo" class="navbar-logo">
+      <div>
+        <div class="navbar-title">Howly Public School</div>
+        <div class="navbar-subtitle">Shaping Future Leaders</div>
+      </div>
+    </a>
+    <button class="navbar-hamburger" id="navbar-hamburger" aria-label="Toggle navigation">☰</button>
+    <div class="navbar-nav" id="navbar-nav">
+      <a href="#leaderboard" class="active">Leaderboard</a>
+      <a href="#results">Results</a>
+      <a href="#upcoming">Upcoming</a>
+      <a href="/admin.html" class="btn btn-primary btn-sm" style="margin-left:8px">Admin</a>
+    </div>
+  </nav>
+
+  <!-- Hero + Leaderboard -->
+  <section class="hero" id="leaderboard">
+    <div class="container">
+      <div class="hero-content">
+        <h1>House <span>Leaderboard</span></h1>
+        <p>Track the race between our four houses — who will claim the House Cup this year?</p>
+      </div>
+      <div class="leaderboard-grid" id="leaderboard-grid">
+        <!-- Rendered by JS -->
+        <div class="spinner"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Points Distribution -->
+  <section class="section section-dark">
+    <div class="container">
+      <div class="section-header" style="margin-bottom:var(--space-xl)">
+        <h2 style="color:var(--white)">Points Distribution</h2>
+        <p style="color:var(--text-secondary)">How the points are spread across all four houses</p>
+        <div class="accent-line"></div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:var(--space-3xl);flex-wrap:wrap">
+        <div class="chart-container">
+          <canvas id="points-chart" width="320" height="320"></canvas>
+        </div>
+        <div id="chart-legend" style="min-width:200px">
+          <!-- Rendered by JS -->
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Recent Results -->
+  <section class="section" id="results">
+    <div class="container">
+      <div class="section-header">
+        <h2>Recent Competition Results</h2>
+        <p>Latest outcomes from inter-house competitions</p>
+        <div class="accent-line"></div>
+      </div>
+      <div class="results-grid" id="results-grid">
+        <!-- Rendered by JS -->
+        <div class="spinner"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Upcoming Competitions -->
+  <section class="section" style="background:var(--surface)" id="upcoming">
+    <div class="container">
+      <div class="section-header">
+        <h2>Upcoming Competitions</h2>
+        <p>Mark your calendars for these exciting events</p>
+        <div class="accent-line"></div>
+      </div>
+      <div id="upcoming-timeline" style="max-width:700px;margin:0 auto">
+        <!-- Rendered by JS -->
+        <div class="spinner"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <div class="tagline">Shaping Future Leaders</div>
+      <div class="footer-brand">
+        <img src="/hps-logo.png" alt="HPS Logo">
+        <span>Howly Public School</span>
+      </div>
+      <p>&copy; 2026 Howly Public School. All rights reserved.</p>
+    </div>
+  </footer>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,120 @@
+/* ── Component Styles ── */
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 10px 24px; border-radius: var(--radius-md); font-weight: 600;
+  font-size: var(--font-sm); transition: var(--transition-base); border: none; cursor: pointer;
+}
+.btn-primary { background: linear-gradient(135deg, var(--accent), var(--accent-hover)); color: var(--primary); }
+.btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 25px var(--accent-glow); }
+.btn-secondary { background: var(--primary-light); color: var(--white); border: 1px solid var(--border); }
+.btn-secondary:hover { background: var(--primary-mid); }
+.btn-danger { background: rgba(231,76,60,0.1); color: var(--danger); }
+.btn-danger:hover { background: rgba(231,76,60,0.2); }
+.btn-sm { padding: 6px 14px; font-size: var(--font-xs); }
+.btn-icon { width: 36px; height: 36px; padding: 0; border-radius: var(--radius-sm); }
+
+/* ── Cards ── */
+.card {
+  background: var(--white); border-radius: var(--radius-lg); padding: var(--space-xl);
+  box-shadow: var(--shadow-sm); border: 1px solid var(--border-light); transition: var(--transition-base);
+}
+.card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+.card-dark {
+  background: var(--primary-light); border: 1px solid var(--border); color: var(--white);
+}
+.card-glass {
+  background: var(--glass-bg); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border); color: var(--white);
+}
+
+/* ── Form Controls ── */
+.form-group { margin-bottom: var(--space-lg); }
+.form-label {
+  display: block; font-size: var(--font-sm); font-weight: 600; color: var(--text-secondary);
+  margin-bottom: var(--space-sm); text-transform: uppercase; letter-spacing: 0.5px;
+}
+.form-input {
+  width: 100%; padding: 12px 16px; background: var(--primary); border: 1px solid var(--border);
+  border-radius: var(--radius-md); color: var(--white); font-size: var(--font-base);
+  transition: var(--transition-base);
+}
+.form-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); }
+.form-input::placeholder { color: var(--text-muted); }
+.form-select {
+  width: 100%; padding: 12px 16px; background: var(--primary); border: 1px solid var(--border);
+  border-radius: var(--radius-md); color: var(--white); font-size: var(--font-base);
+  transition: var(--transition-base); cursor: pointer; appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238a94a6' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 16px center;
+}
+.form-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); }
+
+/* ── Modal ── */
+.modal-backdrop {
+  position: fixed; inset: 0; background: rgba(10,22,40,0.7); backdrop-filter: blur(4px);
+  z-index: var(--z-modal-backdrop); display: none; align-items: center; justify-content: center;
+  animation: backdropFade 0.3s ease;
+}
+.modal-backdrop.active { display: flex; }
+.modal {
+  background: var(--primary-light); border-radius: var(--radius-xl); padding: var(--space-2xl);
+  width: 90%; max-width: 560px; max-height: 90vh; overflow-y: auto; border: 1px solid var(--border);
+  animation: modalSlideUp 0.4s cubic-bezier(0.34,1.56,0.64,1);
+}
+.modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-xl); }
+.modal-header h3 { font-size: var(--font-xl); color: var(--white); }
+.modal-close {
+  width: 36px; height: 36px; border-radius: var(--radius-full); background: var(--primary);
+  color: var(--text-muted); display: flex; align-items: center; justify-content: center;
+  cursor: pointer; border: none; font-size: 18px; transition: var(--transition-base);
+}
+.modal-close:hover { background: var(--danger); color: var(--white); }
+
+/* ── Toast ── */
+.toast-container { position: fixed; top: 20px; right: 20px; z-index: var(--z-toast); display: flex; flex-direction: column; gap: 10px; }
+.toast {
+  padding: 14px 20px; border-radius: var(--radius-md); color: var(--white); font-weight: 500;
+  font-size: var(--font-sm); animation: toastIn 0.4s ease; min-width: 280px;
+  display: flex; align-items: center; gap: 10px; box-shadow: var(--shadow-lg);
+}
+.toast-success { background: linear-gradient(135deg, #27ae60, #2ecc71); }
+.toast-error { background: linear-gradient(135deg, #c0392b, #e74c3c); }
+.toast-info { background: linear-gradient(135deg, #2980b9, #3498db); }
+.toast.removing { animation: toastOut 0.3s ease forwards; }
+
+/* ── Table ── */
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table thead { background: var(--primary); }
+.data-table th {
+  padding: 14px 16px; text-align: left; font-size: var(--font-xs); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); border-bottom: 1px solid var(--border);
+}
+.data-table td {
+  padding: 14px 16px; border-bottom: 1px solid var(--border); color: var(--text-secondary);
+  font-size: var(--font-sm); vertical-align: middle;
+}
+.data-table tbody tr { transition: var(--transition-base); }
+.data-table tbody tr:hover { background: rgba(240,194,68,0.04); }
+
+/* ── Avatar ── */
+.avatar {
+  width: 40px; height: 40px; border-radius: var(--radius-full); object-fit: cover;
+  border: 2px solid var(--border);
+}
+.avatar-lg { width: 64px; height: 64px; }
+.avatar-xl { width: 96px; height: 96px; }
+
+/* ── Empty State ── */
+.empty-state {
+  text-align: center; padding: var(--space-3xl); color: var(--text-muted);
+}
+.empty-state svg { width: 64px; height: 64px; margin: 0 auto var(--space-lg); opacity: 0.5; }
+.empty-state p { font-size: var(--font-md); }
+
+/* ── Loading Spinner ── */
+.spinner {
+  width: 40px; height: 40px; border: 3px solid var(--border); border-top-color: var(--accent);
+  border-radius: 50%; animation: spin 0.8s linear infinite; margin: var(--space-xl) auto;
+}
