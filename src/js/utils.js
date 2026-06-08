@@ -150,8 +150,15 @@ export async function loadSchoolLogo() {
     const { data } = await supabase.from('admin_settings').select('school_logo_url').eq('id', 1).single();
     if (data && data.school_logo_url) {
       const url = convertGDriveUrl(data.school_logo_url);
-      document.querySelectorAll('img[alt="HPS Logo"]').forEach(img => {
+      
+      // Update all logo images
+      document.querySelectorAll('img[alt="HPS Logo"], img.navbar-logo').forEach(img => {
         img.src = url;
+      });
+      
+      // Update favicon
+      document.querySelectorAll('link[rel="icon"]').forEach(link => {
+        link.href = url;
       });
     }
   } catch (e) {
