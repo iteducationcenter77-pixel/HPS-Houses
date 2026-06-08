@@ -238,9 +238,10 @@ document.addEventListener('DOMContentLoaded', () => {
       const newUrl = document.getElementById('school-logo').value;
       const { supabase } = await import('./js/supabase.js');
       
-      // Use upsert to guarantee the row is created if it doesn't exist
+      // Use update as it plays much nicer with Supabase RLS
       const { error } = await supabase.from('admin_settings')
-        .upsert({ id: 1, school_logo_url: newUrl, updated_at: new Date().toISOString() });
+        .update({ school_logo_url: newUrl, updated_at: new Date().toISOString() })
+        .eq('id', 1);
       
       if (error) {
         console.error('Logo update error:', error);
