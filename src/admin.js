@@ -237,10 +237,16 @@ document.addEventListener('DOMContentLoaded', () => {
       
       const newUrl = document.getElementById('school-logo').value;
       const { supabase } = await import('./js/supabase.js');
-      const { error } = await supabase.from('admin_settings').upsert({ id: 1, school_logo_url: newUrl, updated_at: new Date().toISOString() });
       
-      if (error) showToast('Failed to update logo', 'error');
-      else {
+      // Use update instead of upsert for better RLS compatibility
+      const { error } = await supabase.from('admin_settings')
+        .update({ school_logo_url: newUrl, updated_at: new Date().toISOString() })
+        .eq('id', 1);
+      
+      if (error) {
+        console.error('Logo update error:', error);
+        showToast('Failed: ' + error.message, 'error');
+      } else {
         showToast('School logo updated!', 'success');
         import('./js/utils.js').then(m => m.loadSchoolLogo());
       }
