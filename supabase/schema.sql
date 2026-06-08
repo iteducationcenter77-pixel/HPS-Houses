@@ -86,8 +86,8 @@ CREATE POLICY "Public read participation" ON participation FOR SELECT USING (tru
 CREATE POLICY "Public read settings" ON admin_settings FOR SELECT USING (true);
 
 -- Admin full access (requires Supabase Authentication)
-CREATE POLICY "Admin manage houses" ON houses FOR ALL USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
-CREATE POLICY "Admin manage students" ON students FOR ALL USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
-CREATE POLICY "Admin manage competitions" ON competitions FOR ALL USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
-CREATE POLICY "Admin manage participation" ON participation FOR ALL USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
-CREATE POLICY "Admin manage settings" ON admin_settings FOR ALL USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
+CREATE POLICY "Admin manage houses" ON houses FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Admin manage students" ON students FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Admin manage competitions" ON competitions FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Admin manage participation" ON participation FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Admin manage settings" ON admin_settings FOR ALL TO authenticated USING (true) WITH CHECK (true);
