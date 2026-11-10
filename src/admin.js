@@ -164,6 +164,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const content = document.getElementById('admin-content');
     content.onclick = null;
+    content.onkeydown = null;
 
     // Close sidebar on mobile
     sidebar.classList.remove('open');

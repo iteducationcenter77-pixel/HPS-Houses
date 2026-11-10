@@ -7,7 +7,8 @@ import {
   Clock, Compass, Download, Droplets, FileText, FlaskConical, GraduationCap, HeartPulse, Languages, Leaf,
   LifeBuoy, Lightbulb, Mail, MapPin, Megaphone, Menu, MessageCircle, Microscope, Monitor, Palette, Phone,
   Presentation, Quote, Send, Shield, Sparkles, Star, Target, Trophy, Users, X, Zap, ChevronLeft, ChevronRight,
-  Cctv, Bell,
+  Cctv, Bell, ChevronUp, ChevronDown, Trash2, Plus, Upload, ExternalLink, Link, Image as ImageIcon, Check,
+  ImagePlus, LayoutPanelTop, School, Newspaper, Info, RotateCcw,
 } from 'lucide';
 
 /** Escape text for safe use inside HTML. */
@@ -55,7 +56,8 @@ const ICONS = {
   Clock, Compass, Download, Droplets, FileText, FlaskConical, GraduationCap, HeartPulse, Languages, Leaf,
   LifeBuoy, Lightbulb, Mail, MapPin, Megaphone, Menu, MessageCircle, Microscope, Monitor, Palette, Phone,
   Presentation, Quote, Send, Shield, Sparkles, Star, Target, Trophy, Users, X, Zap, ChevronLeft, ChevronRight,
-  Cctv, Bell,
+  Cctv, Bell, ChevronUp, ChevronDown, Trash2, Plus, Upload, ExternalLink, Link, Image: ImageIcon, Check,
+  ImagePlus, LayoutPanelTop, School, Newspaper, Info, RotateCcw,
 };
 
 const attrs = (obj) => Object.entries(obj).map(([k, v]) => `${k}="${esc(v)}"`).join(' ');

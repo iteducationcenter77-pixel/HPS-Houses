@@ -5,7 +5,7 @@
 import { api } from '../js/api.js';
 import { esc, icon, telHref, waHref } from './util.js';
 
-export const CLASS_OPTIONS = ['Nursery', 'KG', 'Class I', 'Class II', 'Class III', 'Class IV', 'Class V', 'Class VI', 'Class VII', 'Class VIII'];
+export const CLASS_OPTIONS = ['Nursery', 'KG', 'Class I', 'Class II', 'Class III', 'Class IV', 'Class V', 'Class VI', 'Class VII', 'Class VIII', 'Class IX', 'Class X'];
 
 export function enquiryForm(kind = 'general') {
   const admission = kind === 'admission';

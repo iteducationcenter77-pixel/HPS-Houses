@@ -13,7 +13,6 @@ export const SITE_DEFAULTS = {
     name: 'Howly Public School',
     short_name: 'HPS',
     tagline: 'A School For Your Genius',
-    logo_url: '/images/site/logo.png',
     crest_url: '/hps-logo.png',
     established: '2024',
     address_line1: 'Lachit Road, Howly',
@@ -34,7 +33,7 @@ export const SITE_DEFAULTS = {
 
   notice: {
     enabled: 'yes',
-    text: 'Admission Open 2026 (Nursery to VIII)',
+    text: 'Admission Open 2026 (Nursery to X)',
   },
 
   hero: {
@@ -63,7 +62,7 @@ export const SITE_DEFAULTS = {
     image: '/images/gallery/photo-2.jpg',
     stats: [
       { value: '2024', label: 'Founded' },
-      { value: 'Nursery – VIII', label: 'Classes Offered' },
+      { value: 'Nursery – X', label: 'Classes Offered' },
       { value: 'NEP-Aligned', label: 'CBSE Curriculum' },
       { value: 'English', label: 'Medium of Instruction' },
     ],
@@ -115,7 +114,7 @@ export const SITE_DEFAULTS = {
         ],
       },
       {
-        title: 'Classes I to VIII',
+        title: 'Classes I to X',
         points: [
           'NCERT textbooks and CBSE curriculum',
           'English as medium of instruction',
@@ -237,7 +236,7 @@ export const SITE_DEFAULTS = {
     heading: 'Notices & Updates',
     intro: 'Stay informed about our latest achievements, events, and announcements.',
     items: [
-      { title: 'Admission Open 2026 (Nursery to VIII)', date: '', category: 'Admissions', text: 'Admissions are open for Nursery to Class VIII. Contact the school office or message us on WhatsApp for details.' },
+      { title: 'Admission Open 2026 (Nursery to X)', date: '', category: 'Admissions', text: 'Admissions are open for Nursery to Class X. Contact the school office or message us on WhatsApp for details.' },
     ],
   },
 
