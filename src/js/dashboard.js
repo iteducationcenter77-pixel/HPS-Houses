@@ -2,63 +2,22 @@
 // Dashboard — Data Loading & Rendering
 // ============================================
 
-import { supabase, isConfigured } from './supabase.js';
+import { api } from './api.js';
 import { formatDate, relativeDate, getHouseClass, getHouseColor, animateCounter, convertGDriveUrl, escapeHtml } from './utils.js';
 import { renderPointsChart } from './charts.js';
-
-// Demo data for when Supabase isn't configured
-const DEMO_HOUSES = [
-  { id: '1', name: 'Orion', color_hex: '#f0c244', motto: 'Shine Bright Like the Stars', total_points: 1250, logo_url: '' },
-  { id: '2', name: 'Titans', color_hex: '#2ecc71', motto: 'Strength in Unity', total_points: 1180, logo_url: '' },
-  { id: '3', name: 'Phoenix', color_hex: '#e74c3c', motto: 'Rise from the Ashes', total_points: 1320, logo_url: '' },
-  { id: '4', name: 'Spartans', color_hex: '#3498db', motto: 'Courage and Honor', total_points: 1100, logo_url: '' }
-];
-
-const DEMO_RESULTS = [
-  { id: '1', name: 'Inter-House Cricket', type: 'Sports', competition_date: '2026-06-05', status: 'completed',
-    winners: [
-      { name: 'Rahul Sharma', house: 'Phoenix', position: 1, points: 50, photo_url: '' },
-      { name: 'Amit Patel', house: 'Orion', position: 2, points: 30, photo_url: '' },
-      { name: 'Vikram Singh', house: 'Spartans', position: 3, points: 20, photo_url: '' }
-    ]
-  },
-  { id: '2', name: 'Science Quiz', type: 'Academic', competition_date: '2026-06-03', status: 'completed',
-    winners: [
-      { name: 'Priya Devi', house: 'Titans', position: 1, points: 40, photo_url: '' },
-      { name: 'Sneha Gupta', house: 'Phoenix', position: 2, points: 25, photo_url: '' },
-      { name: 'Arjun Nair', house: 'Orion', position: 3, points: 15, photo_url: '' }
-    ]
-  },
-  { id: '3', name: 'Dance Competition', type: 'Cultural', competition_date: '2026-06-01', status: 'completed',
-    winners: [
-      { name: 'Meera Krishnan', house: 'Orion', position: 1, points: 45, photo_url: '' },
-      { name: 'Ritu Baruah', house: 'Spartans', position: 2, points: 30, photo_url: '' },
-      { name: 'Kavita Rao', house: 'Titans', position: 3, points: 20, photo_url: '' }
-    ]
-  }
-];
-
-const DEMO_UPCOMING = [
-  { id: '1', name: 'Inter-House Football', type: 'Sports', competition_date: '2026-06-15', description: 'Annual football tournament between all four houses' },
-  { id: '2', name: 'Mathematics Olympiad', type: 'Academic', competition_date: '2026-06-20', description: 'Test your mathematical skills and problem-solving abilities' },
-  { id: '3', name: 'Art Exhibition', type: 'Cultural', competition_date: '2026-06-25', description: 'Showcase your artistic talents through paintings and crafts' },
-  { id: '4', name: 'Debate Championship', type: 'Academic', competition_date: '2026-07-01', description: 'Inter-house debate on contemporary topics' }
-];
 
 /**
  * Load and render the entire dashboard
  */
 export async function initDashboard() {
-  let houses, results, upcoming;
+  let houses = [], results = [], upcoming = [];
 
-  if (isConfigured()) {
-    houses = await fetchHouses();
-    results = await fetchRecentResults();
-    upcoming = await fetchUpcoming();
-  } else {
-    houses = DEMO_HOUSES;
-    results = DEMO_RESULTS;
-    upcoming = DEMO_UPCOMING;
+  try {
+    // One request returns the leaderboard, the 5 latest results (top 3 each)
+    // and the next 5 competitions
+    ({ houses, results, upcoming } = await api('dashboard.get'));
+  } catch (err) {
+    console.error('Error loading dashboard:', err);
   }
 
   renderLeaderboard(houses);
@@ -68,73 +27,16 @@ export async function initDashboard() {
 }
 
 /**
- * Fetch houses sorted by points
- */
-async function fetchHouses() {
-  const { data, error } = await supabase
-    .from('houses')
-    .select('*')
-    .order('total_points', { ascending: false });
-  if (error) { console.error('Error fetching houses:', error); return DEMO_HOUSES; }
-  return data || DEMO_HOUSES;
-}
-
-/**
- * Fetch recent completed competitions with winners
- */
-async function fetchRecentResults() {
-  const { data: competitions, error } = await supabase
-    .from('competitions')
-    .select('*')
-    .eq('status', 'completed')
-    .order('competition_date', { ascending: false })
-    .limit(5);
-
-  if (error || !competitions?.length) return DEMO_RESULTS;
-
-  const results = [];
-  for (const comp of competitions) {
-    const { data: participants } = await supabase
-      .from('participation')
-      .select('*, students(name, photo_url), houses(name)')
-      .eq('competition_id', comp.id)
-      .order('position', { ascending: true })
-      .limit(3);
-
-    results.push({
-      ...comp,
-      winners: (participants || []).map(p => ({
-        name: p.students?.name || 'Unknown',
-        house: p.houses?.name || '',
-        position: p.position,
-        points: p.points_earned,
-        photo_url: p.students?.photo_url || ''
-      }))
-    });
-  }
-  return results;
-}
-
-/**
- * Fetch upcoming competitions
- */
-async function fetchUpcoming() {
-  const { data, error } = await supabase
-    .from('competitions')
-    .select('*')
-    .in('status', ['upcoming', 'ongoing'])
-    .order('competition_date', { ascending: true })
-    .limit(5);
-  if (error || !data?.length) return DEMO_UPCOMING;
-  return data;
-}
-
-/**
  * Render leaderboard cards
  */
 function renderLeaderboard(houses) {
   const grid = document.getElementById('leaderboard-grid');
   if (!grid) return;
+
+  if (!houses.length) {
+    grid.innerHTML = '<div class="empty-state"><p>The leaderboard is unavailable right now. Please try again shortly.</p></div>';
+    return;
+  }
 
   const sorted = [...houses].sort((a, b) => b.total_points - a.total_points);
 

@@ -8,12 +8,14 @@ import './css/animations.css';
 import './css/components.css';
 import './css/admin.css';
 
-import { login, isLoggedIn, logout, changePassword } from './js/auth.js';
+import { login, checkSession, logout, changePassword, canLocalReset, resetPasswordLocally } from './js/auth.js';
 import { renderHousesPage, getHouses } from './js/houses.js';
 import { renderStudentsPage } from './js/students.js';
 import { renderCompetitionsPage } from './js/competitions.js';
-import { showToast, escapeHtml, loadSchoolLogo } from './js/utils.js';
-import { isConfigured } from './js/supabase.js';
+import { showToast, loadSchoolLogo } from './js/utils.js';
+import { api } from './js/api.js';
+import { renderWebsitePage, hasUnsavedWebsiteChanges, forgetWebsiteEditor } from './js/site-editor.js';
+import { renderEnquiriesPage } from './js/enquiries.js';
 
 document.addEventListener('DOMContentLoaded', () => {
   loadSchoolLogo();
@@ -22,14 +24,51 @@ document.addEventListener('DOMContentLoaded', () => {
   const loginForm = document.getElementById('login-form');
   const loginError = document.getElementById('login-error');
 
-  // Check session
-  if (isLoggedIn()) showAdmin();
-  else showLogin();
+  // Ask the server whether this browser is already signed in
+  loginPage.style.display = 'none';
+  checkSession().then(ok => (ok ? showAdmin() : showLogin()));
+
+  // A request was refused because the session ended: go back to the login form
+  window.addEventListener('hps:signed-out', () => {
+    if (adminPanel.style.display === 'none') return;
+    document.getElementById('modal-backdrop').classList.remove('active');
+    showLogin();
+    showToast('Your session has ended. Please sign in again.', 'info');
+  });
 
   function showLogin() {
     loginPage.style.display = '';
     adminPanel.style.display = 'none';
+    document.getElementById('local-reset').style.display = canLocalReset() ? '' : 'none';
   }
+
+  // Set / reset the admin password — offered only on the owner's own computer
+  const resetForm = document.getElementById('local-reset-form');
+  const resetError = document.getElementById('local-reset-error');
+  document.getElementById('local-reset-toggle').addEventListener('click', (e) => {
+    e.preventDefault();
+    resetForm.style.display = resetForm.style.display === 'none' ? '' : 'none';
+  });
+  resetForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    resetError.style.display = 'none';
+    const pwd = document.getElementById('reset-pwd').value;
+    if (pwd !== document.getElementById('reset-pwd2').value) {
+      resetError.textContent = 'The two passwords do not match.';
+      resetError.style.display = 'block';
+      return;
+    }
+    const result = await resetPasswordLocally(pwd);
+    if (result.success) {
+      resetForm.reset();
+      resetForm.style.display = 'none';
+      showAdmin();
+      showToast('Admin password saved. You are signed in.', 'success');
+    } else {
+      resetError.textContent = result.message || 'Could not save the password.';
+      resetError.style.display = 'block';
+    }
+  });
 
   function showAdmin() {
     loginPage.style.display = 'none';
@@ -38,16 +77,31 @@ document.addEventListener('DOMContentLoaded', () => {
     navigateTo('dashboard');
   }
 
+  // Number of unread website enquiries, shown next to "Enquiries" in the sidebar
+  function setEnquiryBadge(count) {
+    const badge = document.getElementById('enquiry-badge');
+    if (!badge) return;
+    badge.textContent = count > 99 ? '99+' : String(count);
+    badge.hidden = !count;
+  }
+
+  // Warn before closing the tab with unsaved website edits
+  window.addEventListener('beforeunload', (e) => {
+    if (hasUnsavedWebsiteChanges()) { e.preventDefault(); e.returnValue = ''; }
+  });
+
   // Login form
   loginForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     loginError.style.display = 'none';
     const pwd = document.getElementById('login-password').value;
-    const ok = await login(pwd);
-    if (ok) {
+    const result = await login(pwd);
+    if (result.success) {
+      loginForm.reset();
       showAdmin();
       showToast('Welcome back, Admin!', 'success');
     } else {
+      loginError.textContent = result.message || 'Invalid password. Please try again.';
       loginError.style.display = 'block';
     }
   });
@@ -89,23 +143,36 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Page navigation
-  function navigateTo(page) {
+  let currentPage = null;
+  function navigateTo(page, options = {}) {
+    if (currentPage === 'website' && page !== 'website' && hasUnsavedWebsiteChanges()
+      && !confirm('You have unsaved website changes. Leave without saving?')) return;
+    if (currentPage === 'website') forgetWebsiteEditor();
+    currentPage = page;
+
     // Update sidebar active state
     document.querySelectorAll('.sidebar-nav a').forEach(a => a.classList.remove('active'));
     const activeLink = document.querySelector(`.sidebar-nav a[data-page="${page}"]`);
     if (activeLink) activeLink.classList.add('active');
 
     // Update title
-    const titles = { dashboard: 'Dashboard', houses: 'Houses', students: 'Students', competitions: 'Competitions', settings: 'Settings' };
+    const titles = {
+      dashboard: 'Dashboard', website: 'Website', enquiries: 'Enquiries', houses: 'Houses',
+      students: 'Students', competitions: 'Competitions', settings: 'Settings',
+    };
     document.getElementById('page-title').textContent = titles[page] || 'Dashboard';
 
     const content = document.getElementById('admin-content');
+    content.onclick = null;
 
     // Close sidebar on mobile
     sidebar.classList.remove('open');
+    window.scrollTo(0, 0);
 
     switch (page) {
       case 'dashboard': renderDashboardPage(content); break;
+      case 'website': renderWebsitePage(content, options.section); break;
+      case 'enquiries': renderEnquiriesPage(content, setEnquiryBadge); break;
       case 'houses': renderHousesPage(content, openModal); break;
       case 'students': renderStudentsPage(content, openModal); break;
       case 'competitions': renderCompetitionsPage(content, openModal); break;
@@ -116,11 +183,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Admin Dashboard
   async function renderDashboardPage(container) {
-    const configured = isConfigured();
     container.innerHTML = `
-      ${!configured ? `<div style="background:rgba(240,194,68,0.1);border:1px solid var(--accent);border-radius:var(--radius-md);padding:var(--space-lg);margin-bottom:var(--space-xl);color:var(--accent)">
-        <strong>⚠ Demo Mode</strong> — Connect Supabase to enable full functionality. Edit <code>src/js/supabase.js</code> with your project credentials.
-      </div>` : ''}
       <div class="stats-grid" id="admin-stats">
         <div class="stat-card orion">
           <div class="stat-label">Orion Points</div>
@@ -139,16 +202,25 @@ document.addEventListener('DOMContentLoaded', () => {
           <div class="stat-value" style="color:var(--spartans)">—</div>
         </div>
       </div>
-      <div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
+      <div class="stats-grid">
+        <div class="stat-card"><div class="stat-label">New Enquiries</div><div class="stat-value accent" id="stat-enquiries">—</div></div>
         <div class="stat-card"><div class="stat-label">Total Students</div><div class="stat-value accent" id="stat-students">—</div></div>
         <div class="stat-card"><div class="stat-label">Competitions</div><div class="stat-value accent" id="stat-comps">—</div></div>
         <div class="stat-card"><div class="stat-label">Total Points Awarded</div><div class="stat-value accent" id="stat-total-pts">—</div></div>
       </div>
-      <div style="margin-top:var(--space-xl);text-align:center;color:var(--text-muted);padding:var(--space-2xl)">
-        <p style="font-size:var(--font-lg);margin-bottom:var(--space-sm)">👋 Welcome to HPS Admin Panel</p>
-        <p>Use the sidebar to manage Houses, Students, and Competitions.</p>
+      <div class="quick-links">
+        <button class="quick-link" data-go="website" data-section="notice"><strong>Update the notice bar</strong><span>Change the scrolling announcement on every page</span></button>
+        <button class="quick-link" data-go="website" data-section="news"><strong>Post a notice</strong><span>Add news or an announcement to the Notices page</span></button>
+        <button class="quick-link" data-go="website" data-section="gallery"><strong>Add photos</strong><span>Upload pictures to the gallery</span></button>
+        <button class="quick-link" data-go="enquiries"><strong>Read enquiries</strong><span>Messages from the Admissions and Contact forms</span></button>
+        <button class="quick-link" data-go="competitions"><strong>Enter competition results</strong><span>Points update the house leaderboard instantly</span></button>
+        <button class="quick-link" data-go="website" data-section="faculty"><strong>Update faculty</strong><span>Add or edit teachers and staff</span></button>
       </div>
     `;
+    container.onclick = (e) => {
+      const go = e.target.closest('[data-go]');
+      if (go) navigateTo(go.dataset.go, { section: go.dataset.section });
+    };
 
     // Load stats
     try {
@@ -163,17 +235,14 @@ document.addEventListener('DOMContentLoaded', () => {
         });
       }
 
-      if (configured) {
-        const { supabase } = await import('./js/supabase.js');
-        const { count: studentCount, error: sErr } = await supabase.from('students').select('*', { count: 'exact', head: true }).eq('is_active', true);
-        if (!sErr && document.getElementById('stat-students')) document.getElementById('stat-students').textContent = studentCount || 0;
+      const totalPts = houses.reduce((s, h) => s + (h.total_points || 0), 0);
+      if (document.getElementById('stat-total-pts')) document.getElementById('stat-total-pts').textContent = totalPts;
 
-        const { count: compCount, error: cErr } = await supabase.from('competitions').select('*', { count: 'exact', head: true });
-        if (!cErr && document.getElementById('stat-comps')) document.getElementById('stat-comps').textContent = compCount || 0;
-
-        const totalPts = houses.reduce((s, h) => s + (h.total_points || 0), 0);
-        if (document.getElementById('stat-total-pts')) document.getElementById('stat-total-pts').textContent = totalPts;
-      }
+      const stats = await api('stats.get');
+      if (document.getElementById('stat-students')) document.getElementById('stat-students').textContent = stats.students || 0;
+      if (document.getElementById('stat-comps')) document.getElementById('stat-comps').textContent = stats.competitions || 0;
+      if (document.getElementById('stat-enquiries')) document.getElementById('stat-enquiries').textContent = stats.newEnquiries || 0;
+      setEnquiryBadge(stats.newEnquiries || 0);
     } catch (err) {
       console.error('Error loading dashboard stats:', err);
     }
@@ -181,27 +250,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Settings Page
   async function renderSettingsPage(container) {
-    let logoUrl = '';
-    if (isConfigured()) {
-      try {
-        const { supabase } = await import('./js/supabase.js');
-        const { data } = await supabase.from('admin_settings').select('school_logo_url').eq('id', 1).single();
-        if (data) logoUrl = data.school_logo_url || '';
-      } catch (err) { console.error('Error fetching logo', err); }
+    let dbConnected = true;
+    try {
+      await api('site.get');
+    } catch (err) {
+      dbConnected = false;
+      console.error('Database check failed', err);
     }
 
     container.innerHTML = `
       <div style="max-width:500px">
         <div class="table-container" style="margin-bottom:var(--space-xl)">
-          <div class="table-header"><h3>School Logo</h3></div>
-          <div style="padding:var(--space-xl)">
-            <form id="logo-form">
-              <div class="form-group">
-                <label class="form-label">School Logo URL (Google Drive)</label>
-                <input class="form-input" type="text" id="school-logo" value="${escapeHtml(logoUrl)}" placeholder="Paste Google Drive share link">
-              </div>
-              <button type="submit" class="btn btn-primary">Update Logo</button>
-            </form>
+          <div class="table-header"><h3>School logo &amp; details</h3></div>
+          <div style="padding:var(--space-xl);color:var(--text-secondary)">
+            <p>The school crest, name, address, phone numbers and social links are now edited under
+              <strong style="color:var(--white)">Website → School details</strong>.</p>
+            <button type="button" class="btn btn-primary btn-sm" id="go-school-details" style="margin-top:var(--space-md)">Open School details</button>
           </div>
         </div>
         <div class="table-container" style="margin-bottom:var(--space-xl)">
@@ -214,7 +278,7 @@ document.addEventListener('DOMContentLoaded', () => {
               </div>
               <div class="form-group">
                 <label class="form-label">New Password</label>
-                <input class="form-input" type="password" id="new-pwd" required minlength="6">
+                <input class="form-input" type="password" id="new-pwd" required minlength="8">
               </div>
               <button type="submit" class="btn btn-primary">Update Password</button>
             </form>
@@ -223,34 +287,15 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="table-container">
           <div class="table-header"><h3>About</h3></div>
           <div style="padding:var(--space-xl);color:var(--text-secondary)">
-            <p><strong style="color:var(--white)">HPS House Management System</strong></p>
-            <p style="margin-top:var(--space-sm)">Howly Public School — Shaping Future Leaders</p>
-            <p style="margin-top:var(--space-sm);font-size:var(--font-sm);color:var(--text-muted)">Supabase: ${isConfigured() ? '✅ Connected' : '❌ Not configured'}</p>
+            <p><strong style="color:var(--white)">Howly Public School — website &amp; house system</strong></p>
+            <p style="margin-top:var(--space-sm)">Everything on the public website and the house leaderboard is managed from this panel.</p>
+            <p style="margin-top:var(--space-sm);font-size:var(--font-sm);color:var(--text-muted)">Database (MongoDB): ${dbConnected ? '✅ Connected' : '❌ Not reachable'}</p>
           </div>
         </div>
       </div>
     `;
 
-    document.getElementById('logo-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      if (!isConfigured()) return showToast('Cannot update logo in demo mode', 'error');
-      
-      const newUrl = document.getElementById('school-logo').value;
-      const { supabase } = await import('./js/supabase.js');
-      
-      // Use update as it plays much nicer with Supabase RLS
-      const { error } = await supabase.from('admin_settings')
-        .update({ school_logo_url: newUrl, updated_at: new Date().toISOString() })
-        .eq('id', 1);
-      
-      if (error) {
-        console.error('Logo update error:', error);
-        showToast('Failed: ' + error.message, 'error');
-      } else {
-        showToast('School logo updated!', 'success');
-        import('./js/utils.js').then(m => m.loadSchoolLogo());
-      }
-    });
+    document.getElementById('go-school-details').addEventListener('click', () => navigateTo('website', { section: 'general' }));
 
     document.getElementById('password-form').addEventListener('submit', async (e) => {
       e.preventDefault();

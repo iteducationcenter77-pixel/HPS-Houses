@@ -2,43 +2,51 @@
 // Students CRUD Module
 // ============================================
 
-import { supabase, isConfigured } from './supabase.js';
+import { api } from './api.js';
 import { convertGDriveUrl, showToast, escapeHtml, debounce } from './utils.js';
 import { getCachedHouses, getHouses } from './houses.js';
 
 let studentsCache = [];
 
 export async function getStudents(filters = {}) {
-  if (!isConfigured()) return [];
-  let query = supabase.from('students').select('*, houses(name, color_hex)').eq('is_active', true).order('class').order('roll_number');
-  if (filters.house_id) query = query.eq('house_id', filters.house_id);
-  if (filters.search) query = query.ilike('name', `%${filters.search}%`);
-  const { data, error } = await query;
-  if (error) { console.error(error); return []; }
-  studentsCache = data || [];
+  try {
+    studentsCache = await api('students.list', { house_id: filters.house_id, search: filters.search });
+  } catch (err) {
+    console.error(err);
+    studentsCache = [];
+  }
   return studentsCache;
 }
 
 export async function addStudent(student) {
-  if (!isConfigured()) { showToast('Student added (demo)', 'success'); return true; }
-  const { error } = await supabase.from('students').insert(student);
-  if (error) { showToast(error.message || 'Failed to add student', 'error'); return false; }
+  try {
+    await api('students.add', { student });
+  } catch (err) {
+    showToast(err.message || 'Failed to add student', 'error');
+    return false;
+  }
   showToast('Student added successfully', 'success');
   return true;
 }
 
 export async function updateStudent(id, updates) {
-  if (!isConfigured()) { showToast('Student updated (demo)', 'success'); return true; }
-  const { error } = await supabase.from('students').update(updates).eq('id', id);
-  if (error) { showToast('Failed to update', 'error'); return false; }
+  try {
+    await api('students.update', { id, updates });
+  } catch (err) {
+    showToast(err.message || 'Failed to update', 'error');
+    return false;
+  }
   showToast('Student updated', 'success');
   return true;
 }
 
 export async function deleteStudent(id) {
-  if (!isConfigured()) { showToast('Student deleted (demo)', 'success'); return true; }
-  const { error } = await supabase.from('students').update({ is_active: false }).eq('id', id);
-  if (error) { showToast('Failed to delete', 'error'); return false; }
+  try {
+    await api('students.delete', { id });
+  } catch (err) {
+    showToast(err.message || 'Failed to delete', 'error');
+    return false;
+  }
   showToast('Student removed', 'success');
   return true;
 }
@@ -93,7 +101,7 @@ async function loadStudentsTable(openModal) {
   if (!tbody) return;
 
   if (!students.length) {
-    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><p>${isConfigured() ? 'No students found' : 'Connect Supabase to manage students'}</p></div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><p>No students found</p></div></td></tr>`;
     return;
   }
 

@@ -2,82 +2,81 @@
 // Competitions CRUD Module
 // ============================================
 
-import { supabase, isConfigured } from './supabase.js';
+import { api } from './api.js';
 import { formatDate, showToast, escapeHtml } from './utils.js';
-import { getHouses } from './houses.js';
 
 export async function getCompetitions() {
-  if (!isConfigured()) return [];
-  const { data, error } = await supabase.from('competitions').select('*').order('competition_date', { ascending: false });
-  if (error) { console.error(error); return []; }
-  return data || [];
+  try {
+    return await api('competitions.list');
+  } catch (err) {
+    console.error(err);
+    return [];
+  }
 }
 
 export async function addCompetition(comp) {
-  if (!isConfigured()) { showToast('Competition added (demo)', 'success'); return true; }
-  const { error } = await supabase.from('competitions').insert(comp);
-  if (error) { showToast(error.message || 'Failed to add', 'error'); return false; }
+  try {
+    await api('competitions.add', { competition: comp });
+  } catch (err) {
+    showToast(err.message || 'Failed to add', 'error');
+    return false;
+  }
   showToast('Competition created', 'success');
   return true;
 }
 
 export async function updateCompetition(id, updates) {
-  if (!isConfigured()) { showToast('Updated (demo)', 'success'); return true; }
-  const { error } = await supabase.from('competitions').update(updates).eq('id', id);
-  if (error) { showToast('Failed to update', 'error'); return false; }
+  try {
+    await api('competitions.update', { id, updates });
+  } catch (err) {
+    showToast(err.message || 'Failed to update', 'error');
+    return false;
+  }
   showToast('Competition updated', 'success');
   return true;
 }
 
 export async function deleteCompetition(id) {
-  if (!isConfigured()) { showToast('Deleted (demo)', 'success'); return true; }
-  // Delete participation first, then competition
-  await supabase.from('participation').delete().eq('competition_id', id);
-  const { error } = await supabase.from('competitions').delete().eq('id', id);
-  if (error) { showToast('Failed to delete', 'error'); return false; }
+  try {
+    // The server removes the competition's results along with it
+    await api('competitions.delete', { id });
+  } catch (err) {
+    showToast(err.message || 'Failed to delete', 'error');
+    return false;
+  }
   showToast('Competition deleted', 'success');
   return true;
 }
 
 export async function getParticipation(compId) {
-  if (!isConfigured()) return [];
-  const { data } = await supabase.from('participation')
-    .select('*, students(name, class, photo_url), houses(name, color_hex)')
-    .eq('competition_id', compId).order('position');
-  return data || [];
+  try {
+    return await api('participation.list', { competition_id: compId });
+  } catch (err) {
+    console.error(err);
+    return [];
+  }
 }
 
 export async function saveResults(compId, results) {
-  if (!isConfigured()) { showToast('Results saved (demo)', 'success'); return true; }
-  // Delete old participation
-  await supabase.from('participation').delete().eq('competition_id', compId);
-  // Insert new
-  if (results.length) {
-    const { error } = await supabase.from('participation').insert(results);
-    if (error) { showToast('Failed to save results', 'error'); return false; }
+  try {
+    // The server replaces the results, marks the competition completed
+    // and recalculates every house's points in one step
+    await api('results.save', { competition_id: compId, results });
+  } catch (err) {
+    showToast(err.message || 'Failed to save results', 'error');
+    return false;
   }
-  // Update competition status
-  await supabase.from('competitions').update({ status: 'completed' }).eq('id', compId);
-  // Recalculate house points
-  await recalculateHousePoints();
   showToast('Results saved & points updated', 'success');
   return true;
 }
 
-async function recalculateHousePoints() {
-  const houses = await getHouses();
-  for (const house of houses) {
-    const { data } = await supabase.from('participation')
-      .select('points_earned').eq('house_id', house.id);
-    const total = (data || []).reduce((sum, p) => sum + (p.points_earned || 0), 0);
-    await supabase.from('houses').update({ total_points: total, updated_at: new Date().toISOString() }).eq('id', house.id);
-  }
-}
-
 export async function getAllStudents() {
-  if (!isConfigured()) return [];
-  const { data } = await supabase.from('students').select('id, name, class, house_id, houses(name, color_hex)').eq('is_active', true).order('name');
-  return data || [];
+  try {
+    return await api('students.list', { sort: 'name' });
+  } catch (err) {
+    console.error(err);
+    return [];
+  }
 }
 
 export function renderCompetitionsPage(container, openModal) {
@@ -106,7 +105,7 @@ async function loadCompTable(openModal) {
   if (!tbody) return;
 
   if (!comps.length) {
-    tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><p>${isConfigured() ? 'No competitions yet' : 'Connect Supabase to manage competitions'}</p></div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><p>No competitions yet</p></div></td></tr>`;
     return;
   }
 

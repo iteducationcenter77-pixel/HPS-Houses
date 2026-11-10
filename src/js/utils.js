@@ -2,6 +2,8 @@
 // Utility Functions
 // ============================================
 
+import { api } from './api.js';
+
 /**
  * Convert Google Drive share URL to direct image URL
  */
@@ -127,9 +129,10 @@ export function debounce(func, wait = 300) {
  * Escape HTML
  */
 export function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
+  // Escapes quotes too, so the result is safe inside attribute values.
+  return String(str ?? '').replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
 }
 
 /**
@@ -144,12 +147,12 @@ export function initialsAvatar(name, color = '#8a94a6') {
  * Fetch and apply the global school logo from admin_settings
  */
 export async function loadSchoolLogo() {
-  const { isConfigured, supabase } = await import('./supabase.js');
-  if (!isConfigured()) return;
   try {
-    const { data } = await supabase.from('admin_settings').select('school_logo_url').eq('id', 1).maybeSingle();
-    if (data && data.school_logo_url) {
-      const url = convertGDriveUrl(data.school_logo_url);
+    // The crest is edited under Admin → Website → School details.
+    const site = await api('site.get');
+    const logo = site?.general?.crest_url;
+    if (logo && /^(\/(?!\/)|https?:\/\/)/i.test(logo)) {
+      const url = convertGDriveUrl(logo);
       
       // Update all logo images
       document.querySelectorAll('img[alt="HPS Logo"], img.navbar-logo').forEach(img => {

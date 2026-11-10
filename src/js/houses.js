@@ -2,32 +2,30 @@
 // Houses CRUD Module
 // ============================================
 
-import { supabase, isConfigured } from './supabase.js';
+import { api } from './api.js';
 import { convertGDriveUrl, showToast, escapeHtml } from './utils.js';
 
 let housesCache = [];
 
-const DEMO_HOUSES = [
-  { id: '1', name: 'Orion', color_hex: '#f0c244', motto: 'Shine Bright Like the Stars', total_points: 1250, logo_url: '' },
-  { id: '2', name: 'Titans', color_hex: '#2ecc71', motto: 'Strength in Unity', total_points: 1180, logo_url: '' },
-  { id: '3', name: 'Phoenix', color_hex: '#e74c3c', motto: 'Rise from the Ashes', total_points: 1320, logo_url: '' },
-  { id: '4', name: 'Spartans', color_hex: '#3498db', motto: 'Courage and Honor', total_points: 1100, logo_url: '' }
-];
-
 export async function getHouses() {
-  if (!isConfigured()) { housesCache = DEMO_HOUSES; return DEMO_HOUSES; }
-  const { data, error } = await supabase.from('houses').select('*').order('total_points', { ascending: false });
-  if (error) { console.error(error); return DEMO_HOUSES; }
-  housesCache = data || DEMO_HOUSES;
+  try {
+    housesCache = await api('houses.list');
+  } catch (err) {
+    console.error(err);
+    housesCache = [];
+  }
   return housesCache;
 }
 
 export function getCachedHouses() { return housesCache; }
 
 export async function updateHouse(id, updates) {
-  if (!isConfigured()) { showToast('House updated (demo)', 'success'); return true; }
-  const { error } = await supabase.from('houses').update({ ...updates, updated_at: new Date().toISOString() }).eq('id', id);
-  if (error) { showToast('Failed to update house', 'error'); return false; }
+  try {
+    await api('houses.update', { id, updates });
+  } catch (err) {
+    showToast(err.message || 'Failed to update house', 'error');
+    return false;
+  }
   showToast('House updated successfully', 'success');
   return true;
 }
@@ -52,6 +50,10 @@ async function loadHousesTable(openModal) {
   const houses = await getHouses();
   const tbody = document.getElementById('houses-tbody');
   if (!tbody) return;
+  if (!houses.length) {
+    tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><p>No houses found</p></div></td></tr>';
+    return;
+  }
   tbody.innerHTML = houses.map(h => {
     const logo = convertGDriveUrl(h.logo_url);
     return `<tr>

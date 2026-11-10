@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="robots" content="noindex, nofollow">
-  <title>Admin Panel | HPS House System</title>
+  <title>Admin Panel | Howly Public School</title>
   <link rel="icon" type="image/png" href="/hps-logo.png">
 </head>
 <body>
@@ -23,8 +23,26 @@
         <button type="submit" class="btn btn-primary">Sign In</button>
         <div class="login-error" id="login-error">Invalid password. Please try again.</div>
       </form>
+
+      <!-- Shown only when the site is opened on the owner's own computer -->
+      <div id="local-reset" style="display:none;margin-top:var(--space-xl);padding-top:var(--space-lg);border-top:1px solid var(--border)">
+        <a href="#" id="local-reset-toggle" style="color:var(--accent);font-size:var(--font-sm)">Set or reset admin password</a>
+        <form id="local-reset-form" style="display:none;margin-top:var(--space-lg)">
+          <div class="form-group">
+            <label class="form-label" for="reset-pwd">New password (at least 8 characters)</label>
+            <input class="form-input" type="password" id="reset-pwd" required minlength="8" autocomplete="new-password">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="reset-pwd2">Type it again</label>
+            <input class="form-input" type="password" id="reset-pwd2" required minlength="8" autocomplete="new-password">
+          </div>
+          <button type="submit" class="btn btn-primary">Save password &amp; sign in</button>
+          <div class="login-error" id="local-reset-error"></div>
+          <p style="color:var(--text-muted);font-size:var(--font-xs);margin-top:var(--space-md)">This option appears only on this computer. It is not available on the live website.</p>
+        </form>
+      </div>
       <div style="margin-top:var(--space-xl)">
-        <a href="/" style="color:var(--text-muted);font-size:var(--font-sm)">← Back to Dashboard</a>
+        <a href="/" style="color:var(--text-muted);font-size:var(--font-sm)">← Back to the website</a>
       </div>
     </div>
   </div>
@@ -46,6 +64,17 @@
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
           Dashboard
         </a>
+        <div class="nav-section">School website</div>
+        <a href="#" data-page="website">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          Website
+        </a>
+        <a href="#" data-page="enquiries">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          Enquiries
+          <span class="nav-badge" id="enquiry-badge" hidden>0</span>
+        </a>
+        <div class="nav-section">House system</div>
         <a href="#" data-page="houses">
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
           Houses
@@ -79,7 +108,7 @@
           <h2 id="page-title">Dashboard</h2>
         </div>
         <div class="admin-topbar-actions">
-          <a href="/" class="btn btn-secondary btn-sm">View Site</a>
+          <a href="/?preview" class="btn btn-secondary btn-sm" target="_blank" rel="noopener">View website ↗</a>
         </div>
       </div>
       <div class="admin-content" id="admin-content">
