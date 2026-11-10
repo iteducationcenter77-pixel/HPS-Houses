@@ -40,7 +40,7 @@ export const SITE_DEFAULTS = {
     eyebrow: 'A CBSE Curriculum School',
     title: 'A School For Your Genius',
     text: 'A CBSE curriculum school blending academics with skills like spoken English, IT proficiency, and critical thinking to prepare students for success.',
-    image: '/images/site/hero.jpg',
+    image: '/images/site/hero-building.jpg',
   },
 
   highlights: {
