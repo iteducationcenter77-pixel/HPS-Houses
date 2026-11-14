@@ -8,6 +8,7 @@ import { actions } from './actions.js';
 
 const MAX_BODY_BYTES = 200_000;
 const MAX_UPLOAD_BODY_BYTES = 2_200_000; // a 1.5 MB image, base64-encoded
+const LARGE_BODY_ACTIONS = new Set(['media.upload', 'students.import']);
 
 function json(status, body, cookies = []) {
   const headers = new Headers({ 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -45,7 +46,7 @@ export async function handleRpc(request) {
 
     const action = typeof body?.action === 'string' && Object.hasOwn(actions, body.action) ? actions[body.action] : null;
     if (!action) throw new HttpError(404, 'Unknown action');
-    if (body.action !== 'media.upload' && raw.length > MAX_BODY_BYTES) throw new HttpError(413, 'Request is too large');
+    if (!LARGE_BODY_ACTIONS.has(body.action) && raw.length > MAX_BODY_BYTES) throw new HttpError(413, 'Request is too large');
 
     const params = body.params && typeof body.params === 'object' && !Array.isArray(body.params) ? body.params : {};
     const db = await getDb();

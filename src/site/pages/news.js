@@ -9,7 +9,7 @@ import { noticeCard } from './home.js';
 export function render(site) {
   const { news, gallery } = site;
   const items = news.items || [];
-  const image = (gallery.items || []).find((x) => /award|event/i.test(x.title))?.image || site.hero.image;
+  const image = site.banners?.news_image || (gallery.items || []).find((x) => /award|event/i.test(x.title))?.image || site.hero.image;
 
   return `
     ${banner({ kicker: 'Stay updated', title: news.heading, text: news.intro, image, crumb: 'Notices' })}

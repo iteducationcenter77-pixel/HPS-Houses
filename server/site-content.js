@@ -31,7 +31,7 @@ function clean(value, template, key) {
     if (typeof value !== 'string') throw new HttpError(400, `"${humanize(key)}" must be text`);
     const text = value.trim();
     if (text.length > MAX_TEXT) throw new HttpError(400, `"${humanize(key)}" is too long`);
-    if (URL_KEYS.has(key) && !isSafeUrl(text)) {
+    if ((URL_KEYS.has(key) || key.endsWith('_image')) && !isSafeUrl(text)) {
       throw new HttpError(400, `"${humanize(key)}" must be a web link starting with https:// (or a site path starting with /)`);
     }
     return text;

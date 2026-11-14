@@ -43,6 +43,17 @@ export const SITE_DEFAULTS = {
     image: '/images/site/hero-building.jpg',
   },
 
+  // Top-of-page pictures for the inner pages.
+  banners: {
+    about_image: '/images/site/hero-building.jpg',
+    academics_image: '/images/gallery/campus-1.jpg',
+    houses_image: '/images/gallery/campus-3.jpg',
+    gallery_image: '/images/gallery/campus-2.jpg',
+    news_image: '/images/gallery/campus-5.jpg',
+    admissions_image: '/images/gallery/photo-2.jpg',
+    contact_image: '/images/site/hero-building.jpg',
+  },
+
   highlights: {
     items: [
       { title: 'Excellence in Education', text: 'Comprehensive and holistic study experience with individual focus.' },

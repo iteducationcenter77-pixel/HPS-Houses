@@ -312,6 +312,76 @@ try {
     assert.equal((await call('enquiry.submit', { name: 'Other', phone: '9876543210', message: 'hi' }, { auth: false, headers: { 'x-forwarded-for': '198.51.100.8' } })).status, 200);
   });
 
+  await step('chest numbers: saved, unique among current students, shown with winners', async () => {
+    const a = await call('students.add', { student: { name: 'Chest One', class: '7-A', roll_number: 1, house_id: orion.id, chest_number: 501 } });
+    assert.equal(a.status, 200);
+    assert.equal(a.data.chest_number, '501');
+    const dup = await call('students.add', { student: { name: 'Chest Two', class: '7-A', roll_number: 2, house_id: titans.id, chest_number: '501' } });
+    assert.equal(dup.status, 409);
+    assert.match(dup.error, /chest number/i);
+    const b = await call('students.add', { student: { name: 'Chest Two', class: '7-A', roll_number: 2, house_id: titans.id, chest_number: '502' } });
+    assert.equal(b.status, 200);
+    assert.equal((await call('students.update', { id: b.data.id, updates: { chest_number: '501' } })).status, 409);
+    assert.equal((await call('students.add', { student: { name: 'Bad photo', class: '7-A', roll_number: 3, house_id: titans.id, photo_url: 'javascript:alert(1)' } })).status, 400);
+    // a removed student's chest number can be reused
+    await call('students.delete', { id: b.data.id });
+    assert.equal((await call('students.add', { student: { name: 'Chest Three', class: '7-A', roll_number: 4, house_id: titans.id, chest_number: '502' } })).status, 200);
+
+    const comp = (await call('competitions.add', { competition: { name: 'Chest Race', type: 'Sports', competition_date: '2026-11-02', status: 'upcoming' } })).data;
+    await call('results.save', { competition_id: comp.id, results: [{ student_id: a.data.id, position: 1, points_earned: 10 }] });
+    const winner = (await call('dashboard.get', {}, { auth: false })).data.results.find((r) => r.id === comp.id).winners[0];
+    assert.equal(winner.chest_number, '501');
+    assert.equal((await call('participation.list', { competition_id: comp.id })).data[0].students.chest_number, '501');
+    await call('competitions.delete', { id: comp.id });
+  });
+
+  await step('excel import: all-or-nothing checks, then adds new and updates matching students', async () => {
+    assert.equal((await call('students.import', { rows: [] })).status, 400);
+    assert.equal((await call('students.import', { rows: [{ name: 'X', class: '1', roll_number: '1', house: 'Orion' }] }, { auth: false })).status, 401);
+
+    const before = (await call('students.list')).data.length;
+    const bad = await call('students.import', { rows: [
+      { __row: 2, name: 'Good Kid', class: 'Class V', roll_number: '1', house: 'orion', chest_number: '601' },
+      { __row: 3, name: 'Nowhere Kid', class: 'Class V', roll_number: '2', house: 'Atlantis' },
+      { __row: 4, name: '', class: 'Class V', roll_number: '3', house: 'Titans' },
+      { __row: 5, name: 'Twin', class: 'Class V', roll_number: '1', house: 'Titans' },
+      { __row: 6, name: 'Same Chest', class: 'Class V', roll_number: '6', house: 'Titans', chest_number: '601' },
+      { __row: 7, name: 'Taken Chest', class: 'Class V', roll_number: '7', house: 'Titans', chest_number: '501' },
+      { __row: 8, name: 'Bad roll', class: 'Class V', roll_number: 'abc', house: 'Titans' },
+    ] });
+    assert.equal(bad.status, 200);
+    assert.equal(bad.data.imported, false);
+    assert.equal(bad.data.errorCount, 6);
+    assert.match(bad.data.errors.join('\n'), /Row 3: House "Atlantis" not found/);
+    assert.match(bad.data.errors.join('\n'), /Row 5: Same class and roll number as row 2/);
+    assert.match(bad.data.errors.join('\n'), /Row 6: Chest number 601 is also on row 2/);
+    assert.match(bad.data.errors.join('\n'), /Row 7: Chest number 501 already belongs to another student/);
+    assert.equal((await call('students.list')).data.length, before, 'nothing saved when any row is wrong');
+
+    const ok = await call('students.import', { rows: [
+      { __row: 2, name: 'Import Kid', class: 'Class V', roll_number: '1', house: 'orion', chest_number: '601', contact_number: '9876543210' },
+      { __row: 3, name: 'Import Kid Two', class: 'Class V', roll_number: '2', house: 'Spartans' },
+      { __row: 4, name: 'Chest One Renamed', class: '7-A', roll_number: '1', house: 'Phoenix', chest_number: '501' },
+    ] });
+    assert.equal(ok.status, 200);
+    assert.deepEqual({ imported: ok.data.imported, added: ok.data.added, updated: ok.data.updated }, { imported: true, added: 2, updated: 1 });
+    const list = (await call('students.list')).data;
+    assert.equal(list.length, before + 2);
+    const renamed = list.find((s) => s.class === '7-A' && s.roll_number === 1);
+    assert.equal(renamed.name, 'Chest One Renamed');
+    assert.equal(renamed.houses.name, 'Phoenix');
+    assert.equal(list.find((s) => s.name === 'Import Kid').chest_number, '601');
+  });
+
+  await step('page banners: editable, unsafe links refused', async () => {
+    assert.equal(SITE_DEFAULTS.banners.news_image.startsWith('/images/'), true);
+    const saved = await call('site.update', { section: 'banners', data: { ...SITE_DEFAULTS.banners, news_image: 'https://example.com/n.jpg' } });
+    assert.equal(saved.status, 200);
+    assert.equal((await call('site.get', {}, { auth: false })).data.banners.news_image, 'https://example.com/n.jpg');
+    assert.equal((await call('site.update', { section: 'banners', data: { ...SITE_DEFAULTS.banners, about_image: 'javascript:alert(1)' } })).status, 400);
+    await call('site.reset', { section: 'banners' });
+  });
+
   await step("local password reset: refused unless it is the owner's own computer", async () => {
     cookie = '';
     const next = PASSWORD + '-local';

@@ -221,7 +221,7 @@ async function openResultsModal(comp, openModal) {
       <div class="participant-row" style="display:grid;grid-template-columns:1fr 80px 80px 40px;gap:8px;align-items:center;padding:8px;background:var(--primary);border-radius:8px;margin-bottom:8px;border:1px solid var(--border)">
         <select class="form-select res-student" data-idx="${i}" style="padding:8px;font-size:var(--font-sm)">
           <option value="">Select Student</option>
-          ${students.map(s => `<option value="${s.id}" ${r.student_id === s.id ? 'selected' : ''}>${s.name} (${s.houses?.name || ''})</option>`).join('')}
+          ${students.map(s => `<option value="${escapeHtml(s.id)}" ${r.student_id === s.id ? 'selected' : ''}>${s.chest_number ? `#${escapeHtml(s.chest_number)} · ` : ''}${escapeHtml(s.name)} (${escapeHtml(s.houses?.name || '')})</option>`).join('')}
         </select>
         <input class="form-input res-pos" data-idx="${i}" type="number" min="1" placeholder="Pos" value="${r.position || ''}" style="padding:8px;font-size:var(--font-sm)">
         <input class="form-input res-pts" data-idx="${i}" type="number" min="0" placeholder="Pts" value="${r.points_earned || 0}" style="padding:8px;font-size:var(--font-sm)">

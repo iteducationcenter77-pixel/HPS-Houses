@@ -378,3 +378,34 @@
 
 /* Icon fallback inside the admin panel */
 .se-layout .ic { width: 1em; height: 1em; flex: none; }
+
+/* ── Students: chest numbers, photos, Excel import ── */
+.chest-badge {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 40px; padding: 3px 10px;
+  border-radius: 8px; background: var(--accent-light); color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.student-photo--initial {
+  display: inline-flex; align-items: center; justify-content: center; border-radius: 50%;
+  background: color-mix(in srgb, var(--hc) 16%, transparent); color: var(--hc); font-weight: 700; font-size: 13px;
+}
+.table-foot { padding: 12px var(--space-xl); border-top: 1px solid var(--border); color: var(--text-muted); font-size: var(--font-sm); }
+.table-foot:empty { display: none; }
+.student-photo-row { display: flex; gap: var(--space-md); align-items: flex-start; }
+.student-photo-preview { width: 110px; height: 138px; flex: none; margin-top: 0; }
+.student-photo-preview img { object-fit: cover; }
+.student-photo-actions { flex: 1; display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.modal.modal--wide { max-width: 860px; }
+.import-steps { margin: 0 0 var(--space-lg); padding-left: 20px; list-style: decimal; color: var(--text-secondary); display: flex; flex-direction: column; gap: 8px; font-size: var(--font-sm); }
+.import-steps strong { color: var(--white); }
+.import-actions { display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-lg); }
+.import-summary { color: var(--text-secondary); margin-bottom: var(--space-sm); }
+.import-summary strong { color: var(--accent); }
+.import-preview { border: 1px solid var(--border); border-radius: var(--radius-md); max-height: 300px; overflow: auto; }
+.import-preview .data-table th, .import-preview .data-table td { padding: 8px 12px; white-space: nowrap; }
+.import-more { color: var(--text-muted); font-size: var(--font-sm); margin-top: 6px; }
+.import-error {
+  margin-top: var(--space-md); padding: var(--space-md); border-radius: var(--radius-md);
+  background: rgba(231, 76, 60, 0.1); border: 1px solid rgba(231, 76, 60, 0.35); color: #f5b7b1; font-size: var(--font-sm);
+}
+.import-error strong { color: #fff; display: block; margin-bottom: 6px; }
+.import-error ul { margin: 0; padding-left: 18px; list-style: disc; display: flex; flex-direction: column; gap: 3px; max-height: 220px; overflow: auto; }

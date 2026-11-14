@@ -9,6 +9,8 @@ import { api } from './api.js';
  */
 export function convertGDriveUrl(url) {
   if (!url) return '';
+  // Only Google Drive share links are rewritten; uploaded pictures (/api/media?id=…) and other links pass through.
+  if (!/drive\.google\.com/i.test(url)) return url;
   // Handle drive.google.com/file/d/ID/view
   const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
   if (match) return `https://lh3.googleusercontent.com/d/${match[1]}`;

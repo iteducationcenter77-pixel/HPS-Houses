@@ -7,7 +7,7 @@ import { esc, icon, iconFor, sectionHead, pad2 } from '../util.js';
 
 export function render(site) {
   const { academics: a, facilities: f, gallery } = site;
-  const bannerImage = (gallery.items || []).find((x) => /classroom|lab/i.test(x.title))?.image || site.hero.image;
+  const bannerImage = site.banners?.academics_image || (gallery.items || []).find((x) => /classroom|lab/i.test(x.title))?.image || site.hero.image;
 
   return `
     ${banner({ kicker: 'NEP 2020 · CBSE', title: a.heading, text: a.intro, image: bannerImage, crumb: 'Academics' })}

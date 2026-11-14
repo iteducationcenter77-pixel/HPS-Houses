@@ -130,6 +130,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Modal helpers
   function openModal(title, bodyHtml) {
+    document.getElementById('modal').className = 'modal'; // forget any size set by the previous dialog
     document.getElementById('modal-title').textContent = title;
     document.getElementById('modal-body').innerHTML = bodyHtml;
     document.getElementById('modal-backdrop').classList.add('active');

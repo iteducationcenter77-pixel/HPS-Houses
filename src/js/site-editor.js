@@ -17,6 +17,7 @@ const NAV = [
   { title: 'General', items: [
     { key: 'general', title: 'School details', icon: 'School', text: 'Name, crest, address, phone numbers, email, WhatsApp, social links and office hours.', page: '/contact' },
     { key: 'notice', title: 'Notice bar', icon: 'Megaphone', text: 'The scrolling announcement at the top of every page.', page: '/' },
+    { key: 'banners', title: 'Page banners', icon: 'Image', text: 'The big picture at the top of each inner page (About, Academics, Houses and more).', page: '/about' },
   ] },
   { title: 'Home page', items: [
     { key: 'hero', title: 'Home banner', icon: 'LayoutPanelTop', text: 'The headline, introduction and big picture at the top of the home page.', page: '/' },
@@ -51,6 +52,11 @@ const GROUPS = {
     { title: 'Footer', keys: ['footer_about'] },
   ],
   notice: [{ title: 'Announcement', keys: ['enabled', 'text'] }],
+  banners: [
+    { title: 'About & Academics', text: 'Wide, bright photos work best — the page title is written over the picture.', keys: ['about_image', 'academics_image'] },
+    { title: 'Houses & Gallery', keys: ['houses_image', 'gallery_image'] },
+    { title: 'Notices, Admissions & Contact', keys: ['news_image', 'admissions_image', 'contact_image'] },
+  ],
   hero: [
     { title: 'Headline', keys: ['eyebrow', 'title', 'text'] },
     { title: 'Background picture', text: 'A wide, bright photo works best (at least 1600 pixels across).', keys: ['image'] },
@@ -109,7 +115,12 @@ const LABELS = {
   programs: 'Programmes', assessment_intro: 'Introduction', assessment: 'Assessment types', calendar: 'Key dates', date: 'Date',
   infrastructure: 'Infrastructure', qualification: 'Qualification', experience: 'Experience', category: 'Category',
   steps: 'Steps', documents: 'Documents',
+  about_image: 'About page', academics_image: 'Academics page', houses_image: 'Houses page', gallery_image: 'Gallery page',
+  news_image: 'Notices page', admissions_image: 'Admissions page', contact_image: 'Contact page',
 };
+
+// Inside a list entry (a person, a photo, a notice…) some words mean something else.
+const ITEM_LABELS = { name: 'Full name', title: 'Title', role: 'Role / position', text: 'Description', image: 'Picture' };
 
 const HINTS = {
   whatsapp: 'Country code and number, digits only — for example 918099375516.',
@@ -163,7 +174,7 @@ function imageSrc(url) {
 
 // ── Fields ──
 
-function fieldHtml(key, value, path, labelText = label(key)) {
+function fieldHtml(key, value, path, labelText = (path.some((p) => typeof p === 'number') && ITEM_LABELS[key]) || label(key)) {
   const id = `f-${path.join('-')}`;
   const dataPath = esc(JSON.stringify(path));
   const hint = HINTS[key] ? `<small class="se-hint">${esc(HINTS[key])}</small>` : '';
@@ -179,7 +190,7 @@ function fieldHtml(key, value, path, labelText = label(key)) {
       </div>`;
   }
 
-  if (IMAGE_KEYS.has(key)) {
+  if (IMAGE_KEYS.has(key) || key.endsWith('_image')) {
     const src = imageSrc(value);
     const external = /^https?:\/\//i.test(value || '');
     return `
@@ -387,7 +398,7 @@ function loadSection(container, key, site) {
 }
 
 /** Shrink a photo in the browser before uploading (faster pages, smaller database). */
-async function resizeImage(file, { maxSize, png }) {
+export async function resizeImage(file, { maxSize, png }) {
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(1, maxSize / Math.max(bitmap.width, bitmap.height));
   const canvas = document.createElement('canvas');

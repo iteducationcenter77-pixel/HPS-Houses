@@ -11,7 +11,7 @@ export function render(site) {
   const categories = [...new Set(items.map((x) => x.category).filter(Boolean))];
 
   return `
-    ${banner({ kicker: 'Gallery', title: gallery.heading, text: gallery.intro, image: items[1]?.image || site.hero.image, crumb: 'Gallery' })}
+    ${banner({ kicker: 'Gallery', title: gallery.heading, text: gallery.intro, image: site.banners?.gallery_image || items[1]?.image || site.hero.image, crumb: 'Gallery' })}
 
     <section class="blk">
       <div class="wrap">

@@ -26,7 +26,7 @@ export function render(site) {
   ];
 
   return `
-    ${banner({ kicker: 'Contact', title: 'We would love to hear from you', text: 'Questions about admissions, programmes or a campus visit — reach out any time.', image: site.hero.image, crumb: 'Contact' })}
+    ${banner({ kicker: 'Contact', title: 'We would love to hear from you', text: 'Questions about admissions, programmes or a campus visit — reach out any time.', image: site.banners?.contact_image || site.hero.image, crumb: 'Contact' })}
 
     <section class="blk">
       <div class="wrap">

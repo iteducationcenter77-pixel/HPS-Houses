@@ -47,6 +47,9 @@ function id(value, field = 'id') {
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const now = () => new Date().toISOString();
 const isDuplicate = (err) => err?.code === 11000;
+const duplicateMessage = (err) => (err?.keyPattern?.chest_number || /chest_number/.test(err?.message || '')
+  ? 'This chest number is already given to another student'
+  : 'A student with this class and roll number already exists');
 
 // Postgres sorted empty positions last; keep that order.
 const positionOf = (e) => e.position ?? Number.MAX_SAFE_INTEGER;
@@ -70,6 +73,13 @@ function studentFields(p, { partial = false } = {}) {
   if (has('house_id')) out.house_id = id(p.house_id, 'House');
   if (has('contact_number')) out.contact_number = text(p.contact_number, 'Contact number', { max: 15 });
   if (has('photo_url')) out.photo_url = text(p.photo_url, 'Photo URL', { max: 2000 });
+  if (has('chest_number')) {
+    const chest = p.chest_number === undefined || p.chest_number === null ? p.chest_number : String(p.chest_number);
+    out.chest_number = text(chest, 'Chest number', { max: 12 });
+  }
+  if (out.photo_url && !/^(\/(?!\/)|https?:\/\/)/i.test(out.photo_url)) {
+    throw new HttpError(400, 'Photo must be a web link (https://…) or an uploaded picture');
+  }
   return out;
 }
 
@@ -132,7 +142,7 @@ export const actions = {
         const entries = await db.collection('participation').find({ competition_id: comp._id }).toArray();
         const top = entries.sort(byPosition).slice(0, 3);
         const students = await db.collection('students')
-          .find({ _id: { $in: top.map((e) => e.student_id) } }, { projection: { name: 1, photo_url: 1 } })
+          .find({ _id: { $in: top.map((e) => e.student_id) } }, { projection: { name: 1, photo_url: 1, chest_number: 1 } })
           .toArray();
         const studentsById = new Map(students.map((s) => [s._id, s]));
         results.push({
@@ -143,6 +153,7 @@ export const actions = {
             position: e.position,
             points: e.points_earned,
             photo_url: studentsById.get(e.student_id)?.photo_url || '',
+            chest_number: studentsById.get(e.student_id)?.chest_number || '',
           })),
         });
       }
@@ -386,7 +397,7 @@ export const actions = {
       try {
         await db.collection('students').insertOne(doc);
       } catch (err) {
-        if (isDuplicate(err)) throw new HttpError(409, 'A student with this class and roll number already exists');
+        if (isDuplicate(err)) throw new HttpError(409, duplicateMessage(err));
         throw err;
       }
       return toClient(doc);
@@ -403,7 +414,7 @@ export const actions = {
         const res = await db.collection('students').updateOne({ _id: id(params.id) }, { $set: fields });
         if (!res.matchedCount) throw new HttpError(404, 'Student not found');
       } catch (err) {
-        if (isDuplicate(err)) throw new HttpError(409, 'A student with this class and roll number already exists');
+        if (isDuplicate(err)) throw new HttpError(409, duplicateMessage(err));
         throw err;
       }
       return { updated: true };
@@ -417,6 +428,73 @@ export const actions = {
       const res = await db.collection('students').updateOne({ _id: id(params.id) }, { $set: { is_active: false } });
       if (!res.matchedCount) throw new HttpError(404, 'Student not found');
       return { deleted: true };
+    },
+  },
+
+  // Bulk add / update students from an Excel sheet (parsed in the browser).
+  // All rows are checked first; nothing is saved unless every row is valid.
+  // A row whose class + roll number matches a current student updates that student.
+  'students.import': {
+    admin: true,
+    async run(db, params) {
+      if (!Array.isArray(params.rows) || !params.rows.length) throw new HttpError(400, 'The sheet has no students in it');
+      if (params.rows.length > 3000) throw new HttpError(400, 'Please import at most 3000 students at a time');
+
+      const houses = await db.collection('houses').find({}, { projection: { name: 1 } }).toArray();
+      const houseByName = new Map(houses.map((h) => [h.name.trim().toLowerCase(), h._id]));
+      const existing = await db.collection('students')
+        .find({ is_active: true }, { projection: { class: 1, roll_number: 1, chest_number: 1 } }).toArray();
+      const keyOf = (cls, roll) => `${String(cls).trim().toLowerCase()}#${roll}`;
+      const existingByKey = new Map(existing.map((s) => [keyOf(s.class, s.roll_number), s]));
+      const chestOwner = new Map(existing.filter((s) => s.chest_number).map((s) => [s.chest_number.toLowerCase(), s._id]));
+
+      const errors = [];
+      const seenKeys = new Map();
+      const seenChests = new Map();
+      const prepared = [];
+
+      params.rows.forEach((row, i) => {
+        const line = Number(row?.__row) || i + 2; // spreadsheet row number (row 1 is the header)
+        try {
+          if (!row || typeof row !== 'object') throw new HttpError(400, 'Row is empty');
+          const houseName = text(row.house, 'House', { max: 100, required: true });
+          const house_id = houseByName.get(houseName.toLowerCase());
+          if (!house_id) throw new HttpError(400, `House "${houseName}" not found (use ${houses.map((h) => h.name).join(', ')})`);
+          const fields = studentFields({ ...row, house_id });
+          const key = keyOf(fields.class, fields.roll_number);
+          if (seenKeys.has(key)) throw new HttpError(400, `Same class and roll number as row ${seenKeys.get(key)}`);
+          seenKeys.set(key, line);
+          const match = existingByKey.get(key);
+          if (fields.chest_number) {
+            const chest = fields.chest_number.toLowerCase();
+            if (seenChests.has(chest)) throw new HttpError(400, `Chest number ${fields.chest_number} is also on row ${seenChests.get(chest)}`);
+            seenChests.set(chest, line);
+            const owner = chestOwner.get(chest);
+            if (owner && owner !== match?._id) throw new HttpError(400, `Chest number ${fields.chest_number} already belongs to another student`);
+          }
+          prepared.push({ fields, match });
+        } catch (err) {
+          if (!(err instanceof HttpError)) throw err;
+          errors.push(`Row ${line}: ${err.message}`);
+        }
+      });
+
+      if (errors.length) {
+        return { imported: false, errors: errors.slice(0, 100), errorCount: errors.length, total: params.rows.length };
+      }
+
+      const at = now();
+      const ops = prepared.map(({ fields, match }) => (match
+        ? { updateOne: { filter: { _id: match._id }, update: { $set: fields } } }
+        : { insertOne: { document: { _id: crypto.randomUUID(), ...fields, is_active: true, created_at: at } } }));
+      try {
+        await db.collection('students').bulkWrite(ops, { ordered: true });
+      } catch (err) {
+        if (isDuplicate(err)) throw new HttpError(409, `${duplicateMessage(err)} — please check the sheet and try again`);
+        throw err;
+      }
+      const updated = prepared.filter((p) => p.match).length;
+      return { imported: true, added: prepared.length - updated, updated, total: prepared.length };
     },
   },
 
@@ -472,7 +550,7 @@ export const actions = {
         const s = studentsById.get(e.student_id);
         return {
           ...toClient(e),
-          students: s ? { name: s.name, class: s.class, photo_url: s.photo_url ?? null } : null,
+          students: s ? { name: s.name, class: s.class, photo_url: s.photo_url ?? null, chest_number: s.chest_number ?? null } : null,
           houses: houseRef(houses.get(e.house_id)),
         };
       });

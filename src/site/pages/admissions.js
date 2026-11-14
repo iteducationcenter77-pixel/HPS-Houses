@@ -9,7 +9,7 @@ import { enquiryForm, bindEnquiryForms } from '../forms.js';
 export function render(site) {
   const { general: g, admissions: ad, notice, gallery } = site;
   const prospectus = safeUrl(g.prospectus_url);
-  const image = (gallery.items || [])[0]?.image ? (gallery.items[7]?.image || gallery.items[0].image) : site.hero.image;
+  const image = site.banners?.admissions_image || ((gallery.items || [])[0]?.image ? (gallery.items[7]?.image || gallery.items[0].image) : site.hero.image);
   const open = notice.enabled !== 'no' && notice.text;
 
   return `

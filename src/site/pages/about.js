@@ -6,7 +6,7 @@ import { banner } from '../layout.js';
 import { esc, img, icon, sectionHead, paragraphs, initials } from '../util.js';
 import { personCard } from './home.js';
 
-const LEADERSHIP = /director|principal|chair|founder|head/i;
+const LEADERSHIP = /director|principal|dean|chair|founder|head/i;
 const TEACHING = /teacher|faculty|lecturer|educator/i;
 
 function groupOf(p) {
@@ -28,7 +28,7 @@ export function render(site) {
   ].filter(([key, , n]) => key === 'all' || n > 0);
 
   return `
-    ${banner({ kicker: `Est. ${g.established}`, title: about.heading, text: about.lead, image: hero.image, crumb: 'About' })}
+    ${banner({ kicker: `Est. ${g.established}`, title: about.heading, text: about.lead, image: site.banners?.about_image || hero.image, crumb: 'About' })}
 
     <section class="blk story">
       <div class="wrap story-grid">

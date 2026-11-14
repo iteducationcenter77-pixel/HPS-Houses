@@ -50,6 +50,11 @@ export async function ensureIndexes(db) {
     { unique: true, partialFilterExpression: { is_active: true } }
   );
   await db.collection('students').createIndex({ house_id: 1 });
+  // Chest numbers are unique among current students (blank is allowed for any number of them).
+  await db.collection('students').createIndex(
+    { chest_number: 1 },
+    { unique: true, name: 'chest_number_active', partialFilterExpression: { is_active: true, chest_number: { $type: 'string' } } }
+  );
 
   await db.collection('competitions').createIndex({ competition_date: -1 });
   await db.collection('competitions').createIndex({ status: 1 });
