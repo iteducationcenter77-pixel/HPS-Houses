@@ -302,6 +302,32 @@ body.menu-open .site-head .menu-btn { border-color: rgba(255, 255, 255, 0.35); }
 .scroll-cue i { width: 1px; height: 52px; background: rgba(255, 255, 255, 0.28); position: relative; overflow: hidden; }
 .scroll-cue i::after { content: ''; position: absolute; inset: 0; background: var(--gold); animation: cue 2.2s var(--ease) infinite; }
 @keyframes cue { 0% { transform: translateY(-100%); } 65%, 100% { transform: translateY(100%); } }
+/* Social icons in the hero's bottom-right corner */
+.mast-social {
+  /* Normally 104px above the hero's bottom; on short screens, lifted so all icons stay on screen. */
+  position: absolute; z-index: 2; right: clamp(18px, 2.4vw, 44px); bottom: max(104px, calc(100% - 100svh + 56px));
+  display: flex; flex-direction: column; align-items: center; gap: 12px; color: #fff;
+}
+.mast-social-label {
+  writing-mode: vertical-rl; transform: rotate(180deg);
+  font-size: 0.66rem; font-weight: 600; letter-spacing: 0.3em; text-transform: uppercase; color: rgba(255, 255, 255, 0.72);
+}
+.mast-social-line { width: 1px; height: 36px; background: linear-gradient(180deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.45)); }
+.mast-social-link {
+  width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; color: #fff;
+  background: rgba(6, 10, 34, 0.38); border: 1px solid rgba(255, 255, 255, 0.3);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  transition: transform 0.5s var(--ease), background 0.4s, border-color 0.4s, box-shadow 0.4s;
+}
+.mast-social-link .ic { width: 20px; height: 20px; }
+.mast-social-link:hover, .mast-social-link:focus-visible { transform: translateY(-3px) scale(1.06); border-color: transparent; }
+.mast-social-link--whatsapp:hover, .mast-social-link--whatsapp:focus-visible { background: #25d366; box-shadow: 0 10px 30px -8px rgba(37, 211, 102, 0.7); }
+.mast-social-link--instagram:hover, .mast-social-link--instagram:focus-visible { background: radial-gradient(circle at 30% 107%, #fdf497 0%, #fdf497 5%, #fd5949 45%, #d6249f 60%, #285aeb 90%); box-shadow: 0 10px 30px -8px rgba(214, 36, 159, 0.7); }
+.mast-social-link--facebook:hover, .mast-social-link--facebook:focus-visible { background: #0866ff; box-shadow: 0 10px 30px -8px rgba(8, 102, 255, 0.7); }
+/* Below this width the corner is shared with the scroll cue — keep the icons, drop the cue. */
+@media (max-width: 1499px) { .mast .scroll-cue { display: none; } }
+@media (max-width: 900px) { .mast-social { display: none; } }
+
 @media (max-width: 700px) {
   .scroll-cue { display: none; }
   .mast-facts li:nth-child(n + 3) { display: none; }
@@ -775,7 +801,11 @@ body.menu-open .site-head .menu-btn { border-color: rgba(255, 255, 255, 0.35); }
 .foot-brand p { margin: 22px 0 24px; max-width: 36ch; font-size: 0.95rem; }
 .socials { display: flex; gap: 10px; }
 .socials a { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; border: 1px solid rgba(255, 255, 255, 0.2); transition: all 0.4s var(--ease); }
-.socials a:hover { background: var(--gold); border-color: var(--gold); color: var(--navy-950); }
+.socials a:hover, .socials a:focus-visible { transform: translateY(-2px); border-color: transparent; color: #fff; }
+.social--whatsapp:hover, .social--whatsapp:focus-visible { background: #25d366; }
+.social--instagram:hover, .social--instagram:focus-visible { background: radial-gradient(circle at 30% 107%, #fdf497 0%, #fdf497 5%, #fd5949 45%, #d6249f 60%, #285aeb 90%); }
+.social--facebook:hover, .social--facebook:focus-visible { background: #0866ff; }
+.menu-socials { flex-basis: 100%; margin-top: 8px; }
 .socials .ic { width: 18px; height: 18px; }
 .foot-title { margin-bottom: 20px; font-family: var(--f-body); font-size: 0.74rem; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold); }
 .foot-links li + li { margin-top: 10px; }

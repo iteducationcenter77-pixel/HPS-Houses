@@ -3,7 +3,7 @@
 // ============================================
 
 import { api } from '../../js/api.js';
-import { esc, img, icon, iconFor, sectionHead, paragraphs, safeUrl, waHref, initials, formatDate, pad2 } from '../util.js';
+import { esc, img, icon, iconFor, sectionHead, paragraphs, safeUrl, waHref, initials, formatDate, pad2, socialLinks, brandIcon } from '../util.js';
 
 // Start loading the live house points while the rest of the page is prepared.
 const housesPromise = api('houses.list').catch(() => []);
@@ -51,7 +51,7 @@ export function render(site) {
         <p class="mast-text" data-intro>${esc(hero.text)}</p>
         <div class="mast-actions" data-intro>
           <a class="ui-btn ui-btn--gold" href="/admissions" data-magnetic><span>Apply for admission</span>${icon('ArrowUpRight')}</a>
-          <a class="ui-btn ui-btn--ghost-light" href="${waHref(g.whatsapp, 'I have a query about admission')}" target="_blank" rel="noopener"><span>WhatsApp us</span>${icon('MessageCircle')}</a>
+          <a class="ui-btn ui-btn--ghost-light" href="${waHref(g.whatsapp, 'I have a query about admission')}" target="_blank" rel="noopener"><span>WhatsApp us</span>${brandIcon.whatsapp}</a>
           ${prospectus ? `<a class="ui-btn ui-btn--text-light" href="${esc(prospectus)}" target="_blank" rel="noopener"><span>View prospectus</span>${icon('Download')}</a>` : ''}
         </div>
       </div>
@@ -60,6 +60,11 @@ export function render(site) {
           ${facts.map((f) => `<li><strong>${esc(f.value)}</strong><span>${esc(f.label)}</span></li>`).join('')}
         </ul>
         <a href="#welcome" class="scroll-cue" aria-label="Scroll down"><span>Scroll</span><i></i></a>
+      </div>
+      <div class="mast-social" data-intro aria-label="Follow us">
+        <span class="mast-social-label">Follow us</span>
+        <span class="mast-social-line"></span>
+        ${socialLinks(g, { cls: 'mast-social-link' })}
       </div>
     </section>
 

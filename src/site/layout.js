@@ -2,7 +2,7 @@
 // Site frame: preloader, header, notice ticker, menu, footer
 // ============================================
 
-import { esc, safeUrl, imageUrl, icon, brandIcon, telHref, waHref } from './util.js';
+import { esc, imageUrl, icon, socialLinks, brandIcon, telHref, waHref } from './util.js';
 
 export const NAV = [
   { href: '/', label: 'Home', page: 'index' },
@@ -94,7 +94,8 @@ export function header(site, page) {
         <div class="menu-foot">
           <a href="${telHref(g.phone)}">${icon('Phone')}${esc(g.phone)}</a>
           <a href="mailto:${esc(g.email)}">${icon('Mail')}${esc(g.email)}</a>
-          <a href="${waHref(g.whatsapp, 'I have a query about admission')}" target="_blank" rel="noopener">${icon('MessageCircle')}WhatsApp us</a>
+          <a href="${waHref(g.whatsapp, 'I have a query about admission')}" target="_blank" rel="noopener">${brandIcon.whatsapp}WhatsApp us</a>
+          <div class="socials menu-socials">${socialLinks(g, { cls: "social" })}</div>
         </div>
       </div>
     </div>`;
@@ -102,8 +103,6 @@ export function header(site, page) {
 
 export function footer(site) {
   const g = site.general;
-  const fb = safeUrl(g.facebook_url);
-  const ig = safeUrl(g.instagram_url);
   const year = new Date().getFullYear();
   const marquee = `${esc(g.name)} <i>✦</i> ${esc(g.tagline)} <i>✦</i> `;
 
@@ -118,7 +117,7 @@ export function footer(site) {
           </div>
           <div class="foot-cta-actions" data-reveal>
             <a class="ui-btn ui-btn--gold" href="/admissions" data-magnetic><span>Apply for admission</span>${icon('ArrowUpRight')}</a>
-            <a class="ui-btn ui-btn--ghost-light" href="${waHref(g.whatsapp, 'I have a query about admission')}" target="_blank" rel="noopener"><span>WhatsApp us</span>${icon('MessageCircle')}</a>
+            <a class="ui-btn ui-btn--ghost-light" href="${waHref(g.whatsapp, 'I have a query about admission')}" target="_blank" rel="noopener"><span>WhatsApp us</span>${brandIcon.whatsapp}</a>
           </div>
         </div>
       </div>
@@ -127,11 +126,7 @@ export function footer(site) {
         <div class="foot-brand">
           ${brand(g)}
           <p>${esc(g.footer_about)}</p>
-          <div class="socials">
-            ${fb ? `<a href="${esc(fb)}" target="_blank" rel="noopener" aria-label="Facebook">${brandIcon.facebook}</a>` : ''}
-            ${ig ? `<a href="${esc(ig)}" target="_blank" rel="noopener" aria-label="Instagram">${brandIcon.instagram}</a>` : ''}
-            <a href="${waHref(g.whatsapp)}" target="_blank" rel="noopener" aria-label="WhatsApp">${icon('MessageCircle')}</a>
-          </div>
+          <div class="socials">${socialLinks(g, { cls: 'social' })}</div>
         </div>
         <div>
           <h3 class="foot-title">Explore</h3>

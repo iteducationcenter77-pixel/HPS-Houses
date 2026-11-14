@@ -3,7 +3,7 @@
 // ============================================
 
 import { banner } from '../layout.js';
-import { esc, icon, sectionHead, safeUrl, telHref, waHref, pad2 } from '../util.js';
+import { esc, icon, brandIcon, sectionHead, safeUrl, telHref, waHref, pad2 } from '../util.js';
 import { enquiryForm, bindEnquiryForms } from '../forms.js';
 
 export function render(site) {
@@ -41,7 +41,7 @@ export function render(site) {
             <p>Prefer to talk? Our office is open <strong>${esc(g.office_days)}, ${esc(g.office_hours)}</strong>.</p>
             <div class="apply-buttons">
               <a class="ui-btn ui-btn--navy ui-btn--sm" href="${telHref(g.phone)}"><span>Call ${esc(g.phone)}</span>${icon('Phone')}</a>
-              <a class="ui-btn ui-btn--outline ui-btn--sm" href="${waHref(g.whatsapp, 'I have a query about admission')}" target="_blank" rel="noopener"><span>WhatsApp</span>${icon('MessageCircle')}</a>
+              <a class="ui-btn ui-btn--outline ui-btn--sm" href="${waHref(g.whatsapp, 'I have a query about admission')}" target="_blank" rel="noopener"><span>WhatsApp</span>${brandIcon.whatsapp}</a>
               ${prospectus ? `<a class="ui-btn ui-btn--outline ui-btn--sm" href="${esc(prospectus)}" target="_blank" rel="noopener"><span>Prospectus</span>${icon('Download')}</a>` : ''}
             </div>
           </div>

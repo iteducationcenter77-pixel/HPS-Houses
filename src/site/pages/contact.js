@@ -54,7 +54,7 @@ export function render(site) {
             <iframe title="Map showing ${esc(g.name)}" src="${esc(mapSrc(g))}" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
           </div>
           <div class="contact-social" data-reveal>
-            <a class="ui-btn ui-btn--navy ui-btn--sm" href="${waHref(g.whatsapp)}" target="_blank" rel="noopener"><span>WhatsApp</span>${icon('MessageCircle')}</a>
+            <a class="ui-btn ui-btn--navy ui-btn--sm" href="${waHref(g.whatsapp)}" target="_blank" rel="noopener"><span>WhatsApp</span>${brandIcon.whatsapp}</a>
             ${fb ? `<a class="round-link" href="${esc(fb)}" target="_blank" rel="noopener" aria-label="Facebook">${brandIcon.facebook}</a>` : ''}
             ${ig ? `<a class="round-link" href="${esc(ig)}" target="_blank" rel="noopener" aria-label="Instagram">${brandIcon.instagram}</a>` : ''}
           </div>

@@ -10,6 +10,7 @@ import {
   Cctv, Bell, ChevronUp, ChevronDown, Trash2, Plus, Upload, ExternalLink, Link, Image as ImageIcon, Check,
   ImagePlus, LayoutPanelTop, School, Newspaper, Info, RotateCcw,
 } from 'lucide';
+import { siWhatsapp, siInstagram, siFacebook } from 'simple-icons';
 
 /** Escape text for safe use inside HTML. */
 export const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => (
@@ -68,11 +69,24 @@ export function icon(name, cls = '') {
   return `<svg class="ic ${cls}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
 }
 
-// Brand marks are not part of the icon set.
+// Official brand marks (from Simple Icons, CC0).
+const brandSvg = (si) => `<svg class="ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="${si.path}"/></svg>`;
 export const brandIcon = {
-  facebook: '<svg class="ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M14 8.5V6.8c0-.8.5-1.3 1.3-1.3H17V2.2C16.6 2.1 15.5 2 14.3 2 11.7 2 10 3.6 10 6.4v2.1H7v3.7h3V22h4v-9.8h3l.5-3.7H14z"/></svg>',
-  instagram: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg>',
+  whatsapp: brandSvg(siWhatsapp),
+  instagram: brandSvg(siInstagram),
+  facebook: brandSvg(siFacebook),
 };
+
+/** WhatsApp, Instagram and Facebook links from the School details (empty links are skipped). */
+export function socialLinks(g, { cls = '' } = {}) {
+  const links = [
+    ['whatsapp', 'WhatsApp', g.whatsapp ? waHref(g.whatsapp, 'Hello, I have a query about Howly Public School') : ''],
+    ['instagram', 'Instagram', safeUrl(g.instagram_url)],
+    ['facebook', 'Facebook', safeUrl(g.facebook_url)],
+  ].filter(([, , href]) => href);
+  return links.map(([key, name, href]) => `
+    <a class="${cls} ${cls}--${key}" href="${esc(href)}" target="_blank" rel="noopener" aria-label="${name}" title="${name}">${brandIcon[key]}</a>`).join('');
+}
 
 /** Pick a fitting icon from a facility / programme title; admins can add new ones freely. */
 export function iconFor(title) {
