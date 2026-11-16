@@ -6,6 +6,7 @@ import crypto from 'node:crypto';
 import { HttpError, toClient } from './db.js';
 import { getSiteContent, saveSection, resetSection } from './site-content.js';
 import { storeImage } from './media.js';
+import { CATEGORY_NAMES } from '../shared/categories.js';
 import {
   verifyPassword, setAdminPassword, getAdminAuth, isAdminRequest,
   sessionCookie, clearedCookie, clientIp, assertLoginAllowed, recordFailedLogin,
@@ -102,6 +103,11 @@ function competitionFields(p, { partial = false } = {}) {
     out.status = status;
   }
   if (has('description')) out.description = text(p.description, 'Description', { max: 5000 });
+  if (has('category')) {
+    const category = text(p.category, 'Category', { max: 30 });
+    if (category && !CATEGORY_NAMES.includes(category)) throw new HttpError(400, `Category must be one of: ${CATEGORY_NAMES.join(', ')}`);
+    out.category = category;
+  }
   return out;
 }
 
@@ -433,7 +439,10 @@ export const actions = {
 
   // Bulk add / update students from an Excel sheet (parsed in the browser).
   // All rows are checked first; nothing is saved unless every row is valid.
-  // A row whose class + roll number matches a current student updates that student.
+  // A row updates an existing student when its Chest Number matches one,
+  // otherwise when Name + Class match one; any other row adds a new student.
+  // Roll numbers run per class, so they are checked against the final result
+  // (students may swap roll numbers within one upload).
   'students.import': {
     admin: true,
     async run(db, params) {
@@ -443,15 +452,19 @@ export const actions = {
       const houses = await db.collection('houses').find({}, { projection: { name: 1 } }).toArray();
       const houseByName = new Map(houses.map((h) => [h.name.trim().toLowerCase(), h._id]));
       const existing = await db.collection('students')
-        .find({ is_active: true }, { projection: { class: 1, roll_number: 1, chest_number: 1 } }).toArray();
-      const keyOf = (cls, roll) => `${String(cls).trim().toLowerCase()}#${roll}`;
-      const existingByKey = new Map(existing.map((s) => [keyOf(s.class, s.roll_number), s]));
-      const chestOwner = new Map(existing.filter((s) => s.chest_number).map((s) => [s.chest_number.toLowerCase(), s._id]));
+        .find({ is_active: true }, { projection: { name: 1, class: 1, roll_number: 1, chest_number: 1 } }).toArray();
+      const norm = (v) => String(v ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+      const byChest = new Map(existing.filter((s) => s.chest_number).map((s) => [norm(s.chest_number), s]));
+      const byNameClass = new Map();
+      for (const s of existing) {
+        const k = `${norm(s.name)}#${norm(s.class)}`;
+        byNameClass.set(k, byNameClass.has(k) ? null : s); // null = ambiguous (two students share name and class)
+      }
 
       const errors = [];
-      const seenKeys = new Map();
-      const seenChests = new Map();
       const prepared = [];
+      const matched = new Map(); // existing _id → spreadsheet row that updates it
+      const seenChests = new Map();
 
       params.rows.forEach((row, i) => {
         const line = Number(row?.__row) || i + 2; // spreadsheet row number (row 1 is the header)
@@ -461,40 +474,77 @@ export const actions = {
           const house_id = houseByName.get(houseName.toLowerCase());
           if (!house_id) throw new HttpError(400, `House "${houseName}" not found (use ${houses.map((h) => h.name).join(', ')})`);
           const fields = studentFields({ ...row, house_id });
-          const key = keyOf(fields.class, fields.roll_number);
-          if (seenKeys.has(key)) throw new HttpError(400, `Same class and roll number as row ${seenKeys.get(key)}`);
-          seenKeys.set(key, line);
-          const match = existingByKey.get(key);
-          if (fields.chest_number) {
-            const chest = fields.chest_number.toLowerCase();
+
+          const chest = fields.chest_number ? norm(fields.chest_number) : '';
+          if (chest) {
             if (seenChests.has(chest)) throw new HttpError(400, `Chest number ${fields.chest_number} is also on row ${seenChests.get(chest)}`);
             seenChests.set(chest, line);
-            const owner = chestOwner.get(chest);
-            if (owner && owner !== match?._id) throw new HttpError(400, `Chest number ${fields.chest_number} already belongs to another student`);
           }
-          prepared.push({ fields, match });
+          let match = chest ? byChest.get(chest) : undefined;
+          if (!match) {
+            const byName = byNameClass.get(`${norm(fields.name)}#${norm(fields.class)}`);
+            if (byName === null) throw new HttpError(400, `Two saved students are called ${fields.name} in class ${fields.class} — add their chest numbers to tell them apart`);
+            // Matching by name must not steal a student whose chest number differs.
+            if (byName && !(chest && byName.chest_number && norm(byName.chest_number) !== chest)) match = byName;
+          }
+          if (match) {
+            if (matched.has(match._id)) throw new HttpError(400, `Updates the same student as row ${matched.get(match._id)} (${match.name})`);
+            matched.set(match._id, line);
+          }
+          if (chest && !match && byChest.has(chest)) {
+            throw new HttpError(400, `Chest number ${fields.chest_number} already belongs to ${byChest.get(chest).name}`);
+          }
+          prepared.push({ line, fields, match });
         } catch (err) {
           if (!(err instanceof HttpError)) throw err;
-          errors.push(`Row ${line}: ${err.message}`);
+          errors.push({ line, message: err.message });
         }
       });
 
-      if (errors.length) {
-        return { imported: false, errors: errors.slice(0, 100), errorCount: errors.length, total: params.rows.length };
+      // Roll numbers per class in the final result: imported rows + saved students not touched by this sheet.
+      const finalRolls = new Map();
+      const claim = (cls, roll, who) => {
+        const key = `${norm(cls)}#${roll}`;
+        if (!finalRolls.has(key)) finalRolls.set(key, []);
+        finalRolls.get(key).push(who);
+      };
+      for (const s of existing) if (!matched.has(s._id)) claim(s.class, s.roll_number, { saved: s });
+      for (const p of prepared) claim(p.fields.class, p.fields.roll_number, { row: p });
+      for (const [key, owners] of finalRolls) {
+        if (owners.length < 2) continue;
+        const rows = owners.filter((o) => o.row);
+        const saved = owners.find((o) => o.saved)?.saved;
+        const [cls, roll] = [rows[0]?.row.fields.class, key.split('#')[1]];
+        rows.forEach((o, k) => {
+          const clash = saved ? `${saved.name} (already saved)` : `row ${rows[k === 0 ? 1 : 0].row.line}`;
+          errors.push({ line: o.row.line, message: `Roll no. ${roll} in class ${cls} is also given to ${clash}` });
+        });
       }
 
+      if (errors.length) {
+        errors.sort((a, b) => a.line - b.line);
+        const list = errors.map((e) => `Row ${e.line}: ${e.message}`);
+        return { imported: false, errors: list.slice(0, 100), errorCount: list.length, total: params.rows.length };
+      }
+
+      // Save. Updated students first step aside to temporary roll numbers so that
+      // swaps within a class never collide with the unique class + roll rule.
       const at = now();
-      const ops = prepared.map(({ fields, match }) => (match
-        ? { updateOne: { filter: { _id: match._id }, update: { $set: fields } } }
-        : { insertOne: { document: { _id: crypto.randomUUID(), ...fields, is_active: true, created_at: at } } }));
+      const updates = prepared.filter((p) => p.match);
       try {
-        await db.collection('students').bulkWrite(ops, { ordered: true });
+        if (updates.length) {
+          await db.collection('students').bulkWrite(updates.map((p, k) => ({
+            updateOne: { filter: { _id: p.match._id }, update: { $set: { roll_number: -(k + 1) } } },
+          })), { ordered: false });
+        }
+        await db.collection('students').bulkWrite(prepared.map(({ fields, match }) => (match
+          ? { updateOne: { filter: { _id: match._id }, update: { $set: fields } } }
+          : { insertOne: { document: { _id: crypto.randomUUID(), ...fields, is_active: true, created_at: at } } })), { ordered: true });
       } catch (err) {
         if (isDuplicate(err)) throw new HttpError(409, `${duplicateMessage(err)} — please check the sheet and try again`);
         throw err;
       }
-      const updated = prepared.filter((p) => p.match).length;
-      return { imported: true, added: prepared.length - updated, updated, total: prepared.length };
+      return { imported: true, added: prepared.length - updates.length, updated: updates.length, total: prepared.length };
     },
   },
 

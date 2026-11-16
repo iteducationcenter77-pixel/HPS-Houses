@@ -5,6 +5,12 @@
 import { api } from './api.js';
 import { formatDate, showToast, escapeHtml, convertGDriveUrl } from './utils.js';
 import { loadAllStudents } from './students.js';
+import { CATEGORIES, OPEN_CATEGORY, categoryLabel, inCategory } from '../../shared/categories.js';
+
+const categoryOptions = (selected = '') => `
+  <option value="">— Choose a category —</option>
+  ${CATEGORIES.map((c) => `<option value="${escapeHtml(c.name)}"${selected === c.name ? ' selected' : ''}>${escapeHtml(c.name)} (${escapeHtml(c.classes)})</option>`).join('')}
+  <option value="${OPEN_CATEGORY}"${selected === OPEN_CATEGORY ? ' selected' : ''}>Open (all classes)</option>`;
 
 export async function getCompetitions() {
   try {
@@ -90,8 +96,8 @@ export function renderCompetitionsPage(container, openModal) {
       <div class="table-header"><h3>All Competitions</h3></div>
       <div class="table-body">
         <table class="data-table">
-          <thead><tr><th>Name</th><th>Type</th><th>Date</th><th>Status</th><th>Actions</th></tr></thead>
-          <tbody id="comp-tbody"><tr><td colspan="5"><div class="spinner"></div></td></tr></tbody>
+          <thead><tr><th>Name</th><th>Category</th><th>Type</th><th>Date</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="comp-tbody"><tr><td colspan="6"><div class="spinner"></div></td></tr></tbody>
         </table>
       </div>
     </div>`;
@@ -106,12 +112,13 @@ async function loadCompTable(openModal) {
   if (!tbody) return;
 
   if (!comps.length) {
-    tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><p>No competitions yet</p></div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><p>No competitions yet</p></div></td></tr>`;
     return;
   }
 
   tbody.innerHTML = comps.map(c => `<tr>
     <td><strong style="color:var(--white)">${escapeHtml(c.name)}</strong></td>
+    <td>${c.category ? `<span class="cat-badge" title="${escapeHtml(categoryLabel(c.category))}">${escapeHtml(c.category)}</span>` : '<span style="color:var(--text-muted)">—</span>'}</td>
     <td><span class="badge badge-${(c.type||'other').toLowerCase()}">${escapeHtml(c.type)}</span></td>
     <td>${formatDate(c.competition_date)}</td>
     <td><span class="badge badge-${c.status}">${c.status}</span></td>
@@ -152,6 +159,10 @@ function openCompModal(comp, openModal) {
         <label class="form-label">Competition Name *</label>
         <input class="form-input" id="cf-name" value="${isEdit ? escapeHtml(comp.name) : ''}" required placeholder="e.g. Inter-House Cricket">
       </div>
+      <div class="form-group">
+        <label class="form-label" for="cf-category">Category *</label>
+        <select class="form-select" id="cf-category" required>${categoryOptions(isEdit ? comp.category || '' : '')}</select>
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-md)">
         <div class="form-group">
           <label class="form-label">Type *</label>
@@ -187,6 +198,7 @@ function openCompModal(comp, openModal) {
     e.preventDefault();
     const data = {
       name: document.getElementById('cf-name').value.trim(),
+      category: document.getElementById('cf-category').value || null,
       type: document.getElementById('cf-type').value,
       competition_date: document.getElementById('cf-date').value,
       status: document.getElementById('cf-status').value,
@@ -211,6 +223,11 @@ async function openResultsModal(comp, openModal) {
 
   openModal('Enter Results — ' + comp.name, `
     <p class="res-intro">Search for each participant by <strong>name, chest no., roll no. or class</strong>, then set their position and points. House totals update when you save.</p>
+    ${comp.category && comp.category !== OPEN_CATEGORY ? `
+      <div class="res-category">
+        <span class="cat-badge">${escapeHtml(categoryLabel(comp.category))}</span>
+        <label><input type="checkbox" id="res-all-classes"> Also show students from other classes</label>
+      </div>` : ''}
     <div class="res-head"><span>Participant</span><span>Position</span><span>Points</span><span></span></div>
     <div id="results-list"></div>
     <button class="btn btn-secondary btn-sm" id="add-participant-btn" style="margin:var(--space-md) 0">+ Add Participant</button>
@@ -263,8 +280,10 @@ async function openResultsModal(comp, openModal) {
     const words = text.toLowerCase().split(/\s+/).filter(Boolean);
     const taken = new Set(rows.filter((r, i) => i !== idx && r.student_id).map((r) => r.student_id));
     if (!words.length) return [];
+    const anyClass = document.getElementById('res-all-classes')?.checked;
     return students.filter((s) => {
       if (taken.has(s.id)) return false;
+      if (!anyClass && !inCategory(s.class, comp.category)) return false;
       const hay = `${s.name} ${s.class} ${s.roll_number} ${s.chest_number || ''} ${s.houses?.name || ''}`.toLowerCase();
       return words.every((w) => hay.includes(w));
     }).slice(0, 8);
@@ -281,7 +300,7 @@ async function openResultsModal(comp, openModal) {
           <button type="button" class="res-option${k === 0 ? ' is-active' : ''}" data-pick="${escapeHtml(s.id)}" data-idx="${idx}">
             ${face(s)}<span><strong>${escapeHtml(s.name)}</strong><small>${escapeHtml(meta(s))}</small></span>
           </button>`).join('')
-      : '<div class="res-none">No student found — try a chest number or class.</div>';
+      : `<div class="res-none">No student found${comp.category && comp.category !== OPEN_CATEGORY && !document.getElementById('res-all-classes')?.checked ? ` in ${escapeHtml(comp.category)}` : ''} — try a chest number or class.</div>`;
   }
 
   function pick(idx, id) {
@@ -339,6 +358,9 @@ async function openResultsModal(comp, openModal) {
   });
 
   renderRows(rows.length === 1 && !rows[0].student_id ? 0 : null);
+  document.getElementById('res-all-classes')?.addEventListener('change', () => {
+    list.querySelectorAll('.res-search').forEach((input) => { if (input.value.trim()) showOptions(input); });
+  });
 
   document.getElementById('add-participant-btn').addEventListener('click', () => {
     const nextPos = Math.max(0, ...rows.map((r) => Number(r.position) || 0)) + 1;

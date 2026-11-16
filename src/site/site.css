@@ -906,3 +906,7 @@ body.menu-open .site-head .menu-btn { border-color: rgba(255, 255, 255, 0.35); }
 .foot-admin:hover { opacity: 1; }
 @media (max-width: 980px) { .foot-grid { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 560px) { .foot-grid { grid-template-columns: 1fr; gap: 32px; } .foot-cta-actions .ui-btn { flex: 1 1 auto; justify-content: space-between; } }
+
+/* Competition category tag (Sub Junior / Junior / Senior / Open) */
+.tag--cat { background: rgba(43, 55, 181, 0.1); color: var(--royal); }
+.hz-tags { display: inline-flex; gap: 6px; flex-wrap: wrap; }

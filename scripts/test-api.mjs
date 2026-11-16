@@ -346,31 +346,79 @@ try {
       { __row: 4, name: '', class: 'Class V', roll_number: '3', house: 'Titans' },
       { __row: 5, name: 'Twin', class: 'Class V', roll_number: '1', house: 'Titans' },
       { __row: 6, name: 'Same Chest', class: 'Class V', roll_number: '6', house: 'Titans', chest_number: '601' },
-      { __row: 7, name: 'Taken Chest', class: 'Class V', roll_number: '7', house: 'Titans', chest_number: '501' },
-      { __row: 8, name: 'Bad roll', class: 'Class V', roll_number: 'abc', house: 'Titans' },
+      { __row: 7, name: 'Bad roll', class: 'Class V', roll_number: 'abc', house: 'Titans' },
     ] });
     assert.equal(bad.status, 200);
     assert.equal(bad.data.imported, false);
-    assert.equal(bad.data.errorCount, 6);
-    assert.match(bad.data.errors.join('\n'), /Row 3: House "Atlantis" not found/);
-    assert.match(bad.data.errors.join('\n'), /Row 5: Same class and roll number as row 2/);
-    assert.match(bad.data.errors.join('\n'), /Row 6: Chest number 601 is also on row 2/);
-    assert.match(bad.data.errors.join('\n'), /Row 7: Chest number 501 already belongs to another student/);
+    const msgs = bad.data.errors.join('\n');
+    assert.equal(bad.data.errorCount, 6, msgs);
+    assert.match(msgs, /Row 3: House "Atlantis" not found/);
+    assert.match(msgs, /Row 5: Roll no\. 1 in class Class V is also given to row 2/);
+    assert.match(msgs, /Row 2: Roll no\. 1 in class Class V is also given to row 5/);
+    assert.match(msgs, /Row 6: Chest number 601 is also on row 2/);
     assert.equal((await call('students.list')).data.length, before, 'nothing saved when any row is wrong');
 
     const ok = await call('students.import', { rows: [
       { __row: 2, name: 'Import Kid', class: 'Class V', roll_number: '1', house: 'orion', chest_number: '601', contact_number: '9876543210' },
       { __row: 3, name: 'Import Kid Two', class: 'Class V', roll_number: '2', house: 'Spartans' },
+      // same chest number as the saved "Chest One" → updates that student (rename, new house)
       { __row: 4, name: 'Chest One Renamed', class: '7-A', roll_number: '1', house: 'Phoenix', chest_number: '501' },
     ] });
     assert.equal(ok.status, 200);
     assert.deepEqual({ imported: ok.data.imported, added: ok.data.added, updated: ok.data.updated }, { imported: true, added: 2, updated: 1 });
     const list = (await call('students.list')).data;
     assert.equal(list.length, before + 2);
-    const renamed = list.find((s) => s.class === '7-A' && s.roll_number === 1);
+    const renamed = list.find((s) => s.chest_number === '501');
     assert.equal(renamed.name, 'Chest One Renamed');
     assert.equal(renamed.houses.name, 'Phoenix');
     assert.equal(list.find((s) => s.name === 'Import Kid').chest_number, '601');
+  });
+
+  await step('excel import: class-wise roll numbers can be re-set and swapped; name + class matches too', async () => {
+    const before = (await call('students.list')).data.length;
+    // swap roll numbers 1 and 2 in Class V (matched by chest no. and by name + class)
+    const swap = await call('students.import', { rows: [
+      { __row: 2, name: 'Import Kid', class: 'Class V', roll_number: '2', house: 'Orion', chest_number: '601' },
+      { __row: 3, name: 'Import Kid Two', class: 'Class V', roll_number: '1', house: 'Spartans', chest_number: '602' },
+    ] });
+    assert.equal(swap.status, 200, JSON.stringify(swap));
+    assert.deepEqual({ imported: swap.data.imported, added: swap.data.added, updated: swap.data.updated }, { imported: true, added: 0, updated: 2 });
+    let list = (await call('students.list')).data;
+    assert.equal(list.length, before);
+    assert.equal(list.find((s) => s.chest_number === '601').roll_number, 2);
+    const two = list.find((s) => s.name === 'Import Kid Two');
+    assert.equal(two.roll_number, 1);
+    assert.equal(two.chest_number, '602', 'chest number added to the student matched by name + class');
+
+    // promote a student to another class by chest number (no duplicate created)
+    const moved = await call('students.import', { rows: [{ __row: 2, name: 'Import Kid', class: 'Class VI', roll_number: '1', house: 'Orion', chest_number: '601' }] });
+    assert.equal(moved.data.updated, 1);
+    list = (await call('students.list')).data;
+    assert.equal(list.length, before);
+    assert.equal(list.find((s) => s.chest_number === '601').class, 'Class VI');
+
+    // a roll number held by a saved student who is not in the sheet is refused
+    const clash = await call('students.import', { rows: [{ __row: 2, name: 'Newcomer', class: 'Class V', roll_number: '1', house: 'Titans' }] });
+    assert.equal(clash.data.imported, false);
+    assert.match(clash.data.errors[0], /Row 2: Roll no\. 1 in class Class V is also given to Import Kid Two \(already saved\)/);
+  });
+
+  await step('competition categories: Sub Junior / Junior / Senior / Open, checked and shown', async () => {
+    const { categoryOf, inCategory } = await import('../shared/categories.js');
+    assert.deepEqual(['2', 'Class IV', 'V', '7-A', 'Class VIII', 'X', '10-B', 'Nursery', 'KG', '1'].map(categoryOf),
+      ['Sub Junior', 'Sub Junior', 'Junior', 'Junior', 'Senior', 'Senior', 'Senior', '', '', '']);
+    assert.equal(inCategory('Class IX', 'Senior'), true);
+    assert.equal(inCategory('Class IX', 'Junior'), false);
+    assert.equal(inCategory('Nursery', 'Open'), true);
+
+    const c = await call('competitions.add', { competition: { name: 'Junior Quiz', type: 'Academic', category: 'Junior', competition_date: '2026-12-01' } });
+    assert.equal(c.status, 200);
+    assert.equal(c.data.category, 'Junior');
+    assert.equal((await call('competitions.add', { competition: { name: 'Bad', category: 'Super Senior', competition_date: '2026-12-01' } })).status, 400);
+    assert.equal((await call('competitions.update', { id: c.data.id, updates: { category: 'Senior' } })).status, 200);
+    const upcoming = (await call('dashboard.get', {}, { auth: false })).data.upcoming.find((x) => x.id === c.data.id);
+    assert.equal(upcoming.category, 'Senior');
+    await call('competitions.delete', { id: c.data.id });
   });
 
   await step('page banners: editable, unsafe links refused', async () => {

@@ -5,6 +5,7 @@
 import { api } from '../../js/api.js';
 import { banner } from '../layout.js';
 import { esc, img, icon, sectionHead, imageUrl, initials, formatDate, pad2 } from '../util.js';
+import { categoryLabel } from '../../../shared/categories.js';
 
 // Start loading the live data while the page frame is prepared.
 const dataPromise = api('dashboard.get').catch(() => null);
@@ -65,7 +66,7 @@ function results(list, houses) {
   return list.map((c) => `
     <article class="hz-result">
       <header class="hz-result-head">
-        <span class="tag">${esc(c.type || 'Competition')}</span>
+        <span class="hz-tags"><span class="tag">${esc(c.type || 'Competition')}</span>${c.category ? `<span class="tag tag--cat" title="${esc(categoryLabel(c.category))}">${esc(c.category)}</span>` : ''}</span>
         ${c.competition_date ? `<time>${icon('Calendar')}${esc(formatDate(c.competition_date))}</time>` : ''}
       </header>
       <h3>${esc(c.name)}</h3>
@@ -122,7 +123,7 @@ function upcoming(list) {
         </div>
         <div class="hz-event-body">
           <div class="hz-event-meta">
-            <span class="tag">${esc(c.type || 'Competition')}</span>
+            <span class="tag">${esc(c.type || 'Competition')}</span>${c.category ? `<span class="tag tag--cat" title="${esc(categoryLabel(c.category))}">${esc(c.category)}</span>` : ''}
             ${when ? `<span class="hz-when">${esc(when)}</span>` : ''}
             ${c.status === 'ongoing' ? '<span class="hz-live"><i></i>Ongoing</span>' : ''}
           </div>

@@ -5,6 +5,7 @@
 import { api } from './api.js';
 import { convertGDriveUrl, showToast, escapeHtml, debounce } from './utils.js';
 import { getCachedHouses, getHouses } from './houses.js';
+import { CATEGORIES, categoryOf } from '../../shared/categories.js';
 import { resizeImage } from './site-editor.js';
 
 // The whole list is loaded once and kept for a minute; searching, filtering,
@@ -51,17 +52,7 @@ function matches(s, words) {
   return words.every((w) => hay.includes(w));
 }
 
-/**
- * When roll numbers run across the whole school (almost all different), the same
- * number on two students is probably a typing mistake — list those.
- */
-function repeatedRolls(list) {
-  if (list.length < 20) return [];
-  const byRoll = new Map();
-  for (const s of list) byRoll.set(s.roll_number, [...(byRoll.get(s.roll_number) || []), s]);
-  if (byRoll.size / list.length < 0.9) return []; // roll numbers restart in each class: repeats are normal
-  return [...byRoll.entries()].filter(([, v]) => v.length > 1);
-}
+// Roll numbers restart in every class; the chest number is each student's unique number.
 
 export async function addStudent(student) {
   try {
@@ -117,12 +108,16 @@ export function renderStudentsPage(container, openModal) {
         <div class="students-tools">
           <input type="search" id="student-search" placeholder="Search name, roll, chest no., class…" class="form-input" autocomplete="off">
           <select id="student-house-filter" class="form-select" aria-label="Filter by house"><option value="">All houses</option></select>
-          <select id="student-sort" class="form-select" aria-label="Sort by">
-            <option value="roll">Sort: Roll no.</option>
-            <option value="class">Sort: Class</option>
-            <option value="name">Sort: Name</option>
-            <option value="chest">Sort: Chest no.</option>
+          <select id="student-category-filter" class="form-select" aria-label="Filter by category">
+            <option value="">All categories</option>
+            ${CATEGORIES.map((c) => `<option value="${escapeHtml(c.name)}">${escapeHtml(c.name)} (${escapeHtml(c.classes)})</option>`).join('')}
           </select>
+          <select id="student-sort" class="form-select" aria-label="Sort by">
+            <option value="class">Sort: Class &amp; roll</option>
+            <option value="chest">Sort: Chest no.</option>
+            <option value="name">Sort: Name</option>
+          </select>
+          <button class="btn btn-secondary btn-sm" id="export-students-btn" title="Download all students as an Excel file you can edit and import back">⇩ Export to Excel</button>
           <button class="btn btn-secondary btn-sm" id="import-students-btn">⇪ Import from Excel</button>
           <button class="btn btn-primary btn-sm" id="add-student-btn">+ Add Student</button>
         </div>
@@ -143,8 +138,10 @@ export function renderStudentsPage(container, openModal) {
   const refresh = () => { page = 1; drawStudents(openModal); };
   document.getElementById('add-student-btn').addEventListener('click', () => openStudentModal(null, openModal));
   document.getElementById('import-students-btn').addEventListener('click', () => openImportModal(openModal));
+  document.getElementById('export-students-btn').addEventListener('click', exportStudents);
   document.getElementById('student-search').addEventListener('input', debounce(refresh, 120));
   document.getElementById('student-house-filter').addEventListener('change', refresh);
+  document.getElementById('student-category-filter').addEventListener('change', refresh);
   document.getElementById('student-sort').addEventListener('change', refresh);
 
   container.onclick = (e) => {
@@ -190,24 +187,27 @@ function drawStudents() {
   if (!tbody || !allStudents) return;
   const words = (document.getElementById('student-search')?.value || '').toLowerCase().split(/\s+/).filter(Boolean);
   const houseId = document.getElementById('student-house-filter')?.value || '';
-  const sortKey = document.getElementById('student-sort')?.value || 'roll';
+  const category = document.getElementById('student-category-filter')?.value || '';
+  const sortKey = document.getElementById('student-sort')?.value || 'class';
 
   const filtered = allStudents
-    .filter((s) => (!houseId || s.house_id === houseId) && (!words.length || matches(s, words)))
-    .sort(SORTS[sortKey] || SORTS.roll);
+    .filter((s) => (!houseId || s.house_id === houseId)
+      && (!category || categoryOf(s.class) === category)
+      && (!words.length || matches(s, words)))
+    .sort(SORTS[sortKey] || SORTS.class);
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   page = Math.min(Math.max(1, page), pages);
   const start = (page - 1) * PAGE_SIZE;
   const shown = filtered.slice(start, start + PAGE_SIZE);
 
-  // Repeated roll numbers (only meaningful when numbers run across the school).
+  // The chest number is each student's unique number: point out anyone still without one.
   const notice = document.getElementById('students-notice');
-  const repeats = repeatedRolls(allStudents);
+  const missingChest = allStudents.filter((s) => !s.chest_number).length;
   if (notice) {
-    notice.innerHTML = repeats.length ? `
-      <div class="students-alert">
-        <strong>Check these roll numbers — each is used by more than one student:</strong>
-        <ul>${repeats.slice(0, 10).map(([roll, list]) => `<li>Roll no. ${escapeHtml(roll)}: ${list.map((s) => `${escapeHtml(s.name)} (${escapeHtml(s.class)})`).join(', ')}</li>`).join('')}</ul>
+    notice.innerHTML = missingChest && allStudents.length ? `
+      <div class="students-alert students-alert--info">
+        <strong>${missingChest} of ${allStudents.length} students don’t have a chest number yet.</strong>
+        The chest number is each student’s unique number (roll numbers restart in every class). Add it with <em>Edit</em>, or in bulk with <em>Import from Excel</em>.
       </div>` : '';
   }
 
@@ -278,7 +278,7 @@ function openStudentModal(student, openModal) {
           <input class="form-input" id="sf-class" value="${v('class')}" required placeholder="e.g. Class X">
         </div>
         <div class="form-group">
-          <label class="form-label" for="sf-roll">Roll number *</label>
+          <label class="form-label" for="sf-roll">Roll no. in class *</label>
           <input class="form-input" id="sf-roll" type="number" value="${v('roll_number')}" required placeholder="1" min="1">
         </div>
         <div class="form-group">
@@ -372,6 +372,40 @@ const cellText = (v) => {
   return String(v).trim();
 };
 
+/**
+ * Download every current student in the same columns as the import sheet, so the
+ * list can be corrected in Excel (e.g. class-wise roll numbers, chest numbers) and
+ * imported back. Students are matched back by chest number, or by name + class.
+ */
+async function exportStudents() {
+  const btn = document.getElementById('export-students-btn');
+  const label = btn?.textContent;
+  if (btn) { btn.disabled = true; btn.textContent = 'Preparing…'; }
+  try {
+    const [{ default: writeExcelFile }, list] = await Promise.all([import('write-excel-file/browser'), loadAllStudents({ force: true })]);
+    const h = (value) => ({ value, fontWeight: 'bold', backgroundColor: '#F0C244', color: '#0A1628' });
+    const rows = [...list].sort(SORTS.class).map((s) => [
+      s.name, s.class, s.roll_number, s.houses?.name || '', s.chest_number || '', s.contact_number || '', s.photo_url || '',
+    ]);
+    const stamp = new Date().toISOString().slice(0, 10);
+    await writeExcelFile([
+      { data: [SAMPLE_HEADERS.map(h), ...rows], sheet: 'Students', columns: [{ width: 26 }, { width: 12 }, { width: 13 }, { width: 14 }, { width: 15 }, { width: 17 }, { width: 40 }] },
+      { data: [
+        [h('Editing this file')],
+        ['Change roll numbers, classes, houses or chest numbers here, then use Import from Excel to upload it back.'],
+        ['Roll Number is the roll in each class (every class starts at 1). Chest Number is each student’s unique number.'],
+        ['Students are matched back by Chest Number — or by Name + Class when they have no chest number yet — so do not change a name and a class at the same time unless the student has a chest number.'],
+        ['Rows you delete here are simply left unchanged in the system (they are not removed).'],
+      ], sheet: 'How to use', columns: [{ width: 120 }] },
+    ]).toFile(`HPS-students-${stamp}.xlsx`);
+    showToast(`Exported ${rows.length} students`, 'success');
+  } catch (err) {
+    showToast(`Could not export: ${err.message}`, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = label; }
+  }
+}
+
 async function downloadSample() {
   const { default: writeExcelFile } = await import('write-excel-file/browser');
   const houses = getCachedHouses().length ? getCachedHouses() : await getHouses();
@@ -388,9 +422,9 @@ async function downloadSample() {
     ['One student per row. Keep the column titles in the first row exactly as they are.'],
     ['Required: Name, Class, Roll Number, House.'],
     [`House must be one of: ${names.join(', ')}.`],
-    ['Chest Number is optional but must be different for every student.'],
+    ['Chest Number is each student’s unique number — it must be different for every student. Roll Number is the roll in their own class (every class starts at 1).'],
     ['Photo Link is optional — paste a Google Drive share link or any image web link. You can also add photos later from the admin panel.'],
-    ['If a row has the same Class and Roll Number as a student already saved, that student is updated instead of added again.'],
+    ['To update students already saved (for example to change roll numbers or move them to a new class), keep their Chest Number — a row with the same Chest Number updates that student. Without a chest number, a row with the same Name and Class updates that student.'],
     ['Delete the three example rows before importing.'],
   ];
   await writeExcelFile([
