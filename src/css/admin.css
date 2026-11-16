@@ -429,11 +429,48 @@
 /* ── Results entry: searchable student picker ── */
 .res-intro { color: var(--text-muted); font-size: var(--font-sm); margin-bottom: var(--space-lg); }
 .res-intro strong { color: var(--text-secondary); }
-.res-head, .res-row { display: grid; grid-template-columns: minmax(0, 1fr) 90px 90px 40px; gap: 10px; align-items: center; }
-.res-head { padding: 0 10px 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: var(--text-muted); }
-.res-row { padding: 10px; margin-bottom: 8px; border-radius: var(--radius-md); background: var(--primary); border: 1px solid var(--border); }
+.res-row { display: grid; grid-template-columns: 84px minmax(0, 1fr) 104px 40px; gap: 10px; align-items: center; }
+.res-row { padding: 8px 10px; border-radius: var(--radius-md); background: var(--primary); border: 1px solid var(--border); }
+.res-row + .res-row { margin-top: 8px; }
 .res-row .form-input { padding: 9px 12px; font-size: var(--font-sm); }
 .res-row .res-del { padding: 6px 10px; }
+
+/* toolbar: points per place + other-classes switch */
+.res-toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-md); flex-wrap: wrap; margin-bottom: var(--space-lg); padding: 12px 14px; border-radius: var(--radius-md); background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border); }
+.res-points { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.res-points-title { font-size: 11px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: var(--text-muted); }
+.res-points-item { display: inline-flex; align-items: center; gap: 6px; }
+.res-points-item .form-input { width: 64px; padding: 7px 10px; font-size: var(--font-sm); text-align: center; }
+.res-anyclass { display: inline-flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: var(--font-sm); cursor: pointer; }
+
+/* medal colours for 1st / 2nd / 3rd */
+.res-medal { display: inline-grid; place-items: center; min-width: 40px; padding: 4px 8px; border-radius: 20px; font-size: 12px; font-weight: 800; }
+.res-medal--1 { background: linear-gradient(135deg, #f6d36b, #d4a930); color: #1a1a2e; }
+.res-medal--2 { background: linear-gradient(135deg, #e6e9ef, #a8b0bd); color: #1a1a2e; }
+.res-medal--3 { background: linear-gradient(135deg, #efa766, #c46a2a); color: #fff; }
+.res-medal--4 { background: var(--primary-light); color: var(--text-secondary); }
+select.res-pos { padding: 8px 26px 8px 12px; border: 0; border-radius: 20px; font-weight: 800; font-size: 13px; cursor: pointer; background-position: right 8px center; }
+
+/* one section per category */
+.res-sections { display: flex; flex-direction: column; gap: var(--space-md); }
+.res-section { padding: 14px; border-radius: var(--radius-lg); background: rgba(255, 255, 255, 0.025); border: 1px solid var(--border); }
+.res-section-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.res-section-head h4 { display: inline; margin-right: 8px; color: var(--white); font-size: 1rem; }
+.res-section-head span { color: var(--text-muted); font-size: 12.5px; }
+.res-section-head .res-filled { padding: 3px 10px; border-radius: 20px; background: var(--primary-light); font-size: 11.5px; font-weight: 700; }
+.res-section-head .res-filled.is-on { background: rgba(46, 204, 113, 0.14); color: #7ddba3; }
+.res-add, .res-add-open { margin-top: 10px; padding: 7px 12px; border-radius: var(--radius-md); background: none; border: 1px dashed var(--border); color: var(--text-muted); font-size: var(--font-sm); font-weight: 600; cursor: pointer; }
+.res-add:hover, .res-add-open:hover { border-color: var(--accent); color: var(--accent); }
+.res-add-open { margin-top: 0; width: 100%; padding: 10px; }
+.res-empty { padding: 6px 2px; color: var(--text-muted); font-size: var(--font-sm); }
+.res-pts-wrap { display: flex; align-items: center; gap: 6px; }
+.res-pts-wrap .form-input { width: 100%; text-align: center; }
+.res-pts-wrap span { color: var(--text-muted); font-size: 12px; }
+.res-footer {
+  position: sticky; z-index: 5; bottom: calc(-1 * var(--space-2xl)); display: flex; align-items: center; justify-content: space-between; gap: var(--space-md); flex-wrap: wrap;
+  margin: var(--space-lg) 0 calc(-1 * var(--space-2xl)); padding: 14px 0 var(--space-2xl); background: var(--primary-light); border-top: 1px solid var(--border);
+}
+.res-summary { color: var(--text-muted); font-size: var(--font-sm); }
 .res-pick { position: relative; min-width: 0; }
 .res-search-wrap { position: relative; }
 .res-options {
@@ -453,9 +490,9 @@
 .res-chosen-text strong { color: var(--white); font-size: var(--font-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .res-chosen-text small { color: var(--text-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 640px) {
-  .res-head { display: none; }
-  .res-row { grid-template-columns: 1fr 1fr 40px; }
-  .res-pick { grid-column: 1 / -1; }
+  .res-row { grid-template-columns: 84px 1fr 40px; }
+  .res-pick { grid-column: 1 / -1; grid-row: 1; }
+  .res-footer .btn { width: 100%; }
 }
 
 /* ── Competition categories ── */
@@ -463,7 +500,5 @@
   display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 20px; white-space: nowrap;
   background: rgba(52, 152, 219, 0.14); color: #7fb8e6; font-size: 11.5px; font-weight: 700; letter-spacing: 0.3px;
 }
-.res-category { display: flex; align-items: center; justify-content: space-between; gap: var(--space-md); flex-wrap: wrap; margin: -6px 0 var(--space-lg); }
-.res-category label { display: inline-flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: var(--font-sm); cursor: pointer; }
 .students-alert--info { background: rgba(52, 152, 219, 0.1); border-color: rgba(52, 152, 219, 0.35); color: #aed6f1; }
 .students-alert--info em { color: #fff; font-style: normal; font-weight: 600; }

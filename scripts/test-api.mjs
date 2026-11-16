@@ -403,7 +403,7 @@ try {
     assert.match(clash.data.errors[0], /Row 2: Roll no\. 1 in class Class V is also given to Import Kid Two \(already saved\)/);
   });
 
-  await step('competition categories: Sub Junior / Junior / Senior / Open, checked and shown', async () => {
+  await step('competition results: 1st, 2nd, 3rd entered per category (Sub Junior / Junior / Senior)', async () => {
     const { categoryOf, inCategory } = await import('../shared/categories.js');
     assert.deepEqual(['2', 'Class IV', 'V', '7-A', 'Class VIII', 'X', '10-B', 'Nursery', 'KG', '1'].map(categoryOf),
       ['Sub Junior', 'Sub Junior', 'Junior', 'Junior', 'Senior', 'Senior', 'Senior', '', '', '']);
@@ -411,14 +411,35 @@ try {
     assert.equal(inCategory('Class IX', 'Junior'), false);
     assert.equal(inCategory('Nursery', 'Open'), true);
 
-    const c = await call('competitions.add', { competition: { name: 'Junior Quiz', type: 'Academic', category: 'Junior', competition_date: '2026-12-01' } });
-    assert.equal(c.status, 200);
-    assert.equal(c.data.category, 'Junior');
-    assert.equal((await call('competitions.add', { competition: { name: 'Bad', category: 'Super Senior', competition_date: '2026-12-01' } })).status, 400);
-    assert.equal((await call('competitions.update', { id: c.data.id, updates: { category: 'Senior' } })).status, 200);
-    const upcoming = (await call('dashboard.get', {}, { auth: false })).data.upcoming.find((x) => x.id === c.data.id);
-    assert.equal(upcoming.category, 'Senior');
-    await call('competitions.delete', { id: c.data.id });
+    // One competition for everyone; results are entered 1st/2nd/3rd per category.
+    const add = async (name, cls, roll) => (await call('students.add', { student: { name, class: cls, roll_number: roll, house_id: orion.id } })).data;
+    const sj = [await add('Cat SJ One', '3', 91), await add('Cat SJ Two', '4', 91)];
+    const jr = [await add('Cat JR One', '6', 91), await add('Cat JR Two', '6', 92), await add('Cat JR Four', '7', 91)];
+    const sr = await add('Cat SR One', '9', 91);
+    const c = (await call('competitions.add', { competition: { name: 'Sports Day Sprint', type: 'Sports', competition_date: '2026-11-03' } })).data;
+    assert.equal((await call('results.save', { competition_id: c.id, results: [
+      { student_id: sr.id, category: 'Super Senior', position: 1, points_earned: 10 },
+    ] })).status, 400, 'unknown category refused');
+    const saved = await call('results.save', { competition_id: c.id, results: [
+      { student_id: sr.id, category: 'Senior', position: 1, points_earned: 10 },
+      { student_id: jr[2].id, category: 'Junior', position: 4, points_earned: 0 },
+      { student_id: jr[1].id, category: 'Junior', position: 2, points_earned: 7 },
+      { student_id: jr[0].id, category: 'Junior', position: 1, points_earned: 10 },
+      { student_id: sj[1].id, category: 'Sub Junior', position: 2, points_earned: 7 },
+      { student_id: sj[0].id, category: 'Sub Junior', position: 1, points_earned: 10 },
+    ] });
+    assert.equal(saved.status, 200, JSON.stringify(saved));
+    const entries = (await call('participation.list', { competition_id: c.id })).data;
+    assert.equal(entries.find((e) => e.student_id === jr[1].id).category, 'Junior');
+    // Public results: grouped Sub Junior → Junior → Senior, top three places of each only.
+    const result = (await call('dashboard.get', {}, { auth: false })).data.results.find((r) => r.id === c.id);
+    assert.deepEqual(result.winners.map((w) => [w.category, w.position, w.name]), [
+      ['Sub Junior', 1, 'Cat SJ One'], ['Sub Junior', 2, 'Cat SJ Two'],
+      ['Junior', 1, 'Cat JR One'], ['Junior', 2, 'Cat JR Two'],
+      ['Senior', 1, 'Cat SR One'],
+    ]);
+    await call('competitions.delete', { id: c.id });
+    for (const s of [...sj, ...jr, sr]) await call('students.delete', { id: s.id });
   });
 
   await step('page banners: editable, unsafe links refused', async () => {

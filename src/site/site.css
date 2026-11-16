@@ -907,6 +907,8 @@ body.menu-open .site-head .menu-btn { border-color: rgba(255, 255, 255, 0.35); }
 @media (max-width: 980px) { .foot-grid { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 560px) { .foot-grid { grid-template-columns: 1fr; gap: 32px; } .foot-cta-actions .ui-btn { flex: 1 1 auto; justify-content: space-between; } }
 
-/* Competition category tag (Sub Junior / Junior / Senior / Open) */
-.tag--cat { background: rgba(43, 55, 181, 0.1); color: var(--royal); }
-.hz-tags { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+/* Results grouped by category (Sub Junior / Junior / Senior / Open) */
+.hz-cat { display: flex; align-items: baseline; gap: 8px; margin-top: 12px; padding: 6px 12px; border-radius: 999px; background: rgba(43, 55, 181, 0.07); }
+.hz-cat strong { color: var(--royal); font-size: 0.78rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.hz-cat span { color: var(--muted); font-size: 0.78rem; }
+.hz-cat + .hz-podium .hz-place:first-child { border-top: 0; }

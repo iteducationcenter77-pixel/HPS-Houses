@@ -5,7 +5,7 @@
 import { api } from '../../js/api.js';
 import { banner } from '../layout.js';
 import { esc, img, icon, sectionHead, imageUrl, initials, formatDate, pad2 } from '../util.js';
-import { categoryLabel } from '../../../shared/categories.js';
+import { CATEGORIES, OPEN_CATEGORY } from '../../../shared/categories.js';
 
 // Start loading the live data while the page frame is prepared.
 const dataPromise = api('dashboard.get').catch(() => null);
@@ -63,31 +63,49 @@ function results(list, houses) {
   if (!list.length) {
     return `<div class="hz-empty">${icon('Award')}<p>No competition results yet — they appear here as soon as results are entered.</p></div>`;
   }
+  const place = (w, i, houses) => {
+    const color = hex(houseByName(houses, w.house)?.color_hex);
+    const pos = Number(w.position) || i + 1;
+    return `
+      <li class="hz-place hz-place--${MEDALS[pos - 1] || 'other'}" style="--hc:${color}">
+        <span class="hz-medal" title="${esc(ordinal(pos))} place">${pos}</span>
+        <span class="hz-avatar">${w.photo_url ? img(w.photo_url, w.name) : `<span>${esc(initials(w.name))}</span>`}</span>
+        <span class="hz-who">
+          <strong>${esc(w.name)}</strong>
+          <small><i></i>${esc(w.house || '')}${w.chest_number ? ` · Chest No. ${esc(w.chest_number)}` : ''}</small>
+        </span>
+        <span class="hz-gain">+${Number(w.points) || 0}</span>
+      </li>`;
+  };
+  // Winners arrive already ordered Sub Junior → Junior → Senior → Open; group them under a small heading.
+  const podiums = (winners) => {
+    if (!winners.length) return '<ol class="hz-podium"><li class="hz-place-none">Results are being finalised.</li></ol>';
+    const groups = [];
+    for (const w of winners) {
+      const last = groups[groups.length - 1];
+      if (last && last.category === (w.category || '')) last.list.push(w);
+      else groups.push({ category: w.category || '', list: [w] });
+    }
+    return groups.map((g) => `
+      ${g.category ? `<p class="hz-cat"><strong>${esc(g.category)}</strong><span>${esc(classesOf(g.category))}</span></p>` : ''}
+      <ol class="hz-podium">${g.list.map((w, i) => place(w, i, houses)).join('')}</ol>`).join('');
+  };
   return list.map((c) => `
     <article class="hz-result">
       <header class="hz-result-head">
-        <span class="hz-tags"><span class="tag">${esc(c.type || 'Competition')}</span>${c.category ? `<span class="tag tag--cat" title="${esc(categoryLabel(c.category))}">${esc(c.category)}</span>` : ''}</span>
+        <span class="tag">${esc(c.type || 'Competition')}</span>
         ${c.competition_date ? `<time>${icon('Calendar')}${esc(formatDate(c.competition_date))}</time>` : ''}
       </header>
       <h3>${esc(c.name)}</h3>
-      <ol class="hz-podium">
-        ${(c.winners || []).map((w, i) => {
-          const house = houseByName(houses, w.house);
-          const color = hex(house?.color_hex);
-          return `
-            <li class="hz-place hz-place--${MEDALS[i] || 'other'}" style="--hc:${color}">
-              <span class="hz-medal">${w.position || i + 1}</span>
-              <span class="hz-avatar">${w.photo_url ? img(w.photo_url, w.name) : `<span>${esc(initials(w.name))}</span>`}</span>
-              <span class="hz-who">
-                <strong>${esc(w.name)}</strong>
-                <small><i></i>${esc(w.house || '')}${w.chest_number ? ` · Chest No. ${esc(w.chest_number)}` : ''}</small>
-              </span>
-              <span class="hz-gain">+${Number(w.points) || 0}</span>
-            </li>`;
-        }).join('') || '<li class="hz-place-none">Results are being finalised.</li>'}
-      </ol>
+      ${podiums(c.winners || [])}
     </article>`).join('');
 }
+
+const ordinal = (n) => {
+  const v = n % 100;
+  return n + (['th', 'st', 'nd', 'rd'][(v - 20) % 10] || ['th', 'st', 'nd', 'rd'][v] || 'th');
+};
+const classesOf = (category) => CATEGORIES.find((c) => c.name === category)?.classes || (category === OPEN_CATEGORY ? 'All classes' : '');
 
 /** "2026-11-15" → that day at local midnight (new Date("2026-11-15") would be UTC midnight). */
 function localDate(dateStr) {
@@ -123,7 +141,7 @@ function upcoming(list) {
         </div>
         <div class="hz-event-body">
           <div class="hz-event-meta">
-            <span class="tag">${esc(c.type || 'Competition')}</span>${c.category ? `<span class="tag tag--cat" title="${esc(categoryLabel(c.category))}">${esc(c.category)}</span>` : ''}
+            <span class="tag">${esc(c.type || 'Competition')}</span>
             ${when ? `<span class="hz-when">${esc(when)}</span>` : ''}
             ${c.status === 'ongoing' ? '<span class="hz-live"><i></i>Ongoing</span>' : ''}
           </div>

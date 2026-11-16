@@ -54,6 +54,7 @@ const duplicateMessage = (err) => (err?.keyPattern?.chest_number || /chest_numbe
 
 // Postgres sorted empty positions last; keep that order.
 const positionOf = (e) => e.position ?? Number.MAX_SAFE_INTEGER;
+const categoryRank = (c) => (CATEGORY_NAMES.includes(c) ? CATEGORY_NAMES.indexOf(c) : CATEGORY_NAMES.length);
 const byPosition = (a, b) => positionOf(a) - positionOf(b);
 
 async function houseMap(db) {
@@ -146,7 +147,17 @@ export const actions = {
       const results = [];
       for (const comp of completed) {
         const entries = await db.collection('participation').find({ competition_id: comp._id }).toArray();
-        const top = entries.sort(byPosition).slice(0, 3);
+        // Top three places of each category (Sub Junior, Junior, Senior, Open), in that order.
+        const groups = new Map();
+        for (const e of entries.sort((a, b) => categoryRank(a.category) - categoryRank(b.category) || byPosition(a, b))) {
+          const key = e.category || '';
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(e);
+        }
+        const top = [...groups.values()].flatMap((list) => {
+          const placed = list.filter((e) => e.position && e.position <= 3);
+          return placed.length ? placed : list.slice(0, 3);
+        });
         const students = await db.collection('students')
           .find({ _id: { $in: top.map((e) => e.student_id) } }, { projection: { name: 1, photo_url: 1, chest_number: 1 } })
           .toArray();
@@ -157,6 +168,7 @@ export const actions = {
             name: studentsById.get(e.student_id)?.name || 'Unknown',
             house: housesById.get(e.house_id)?.name || '',
             position: e.position,
+            category: e.category || '',
             points: e.points_earned,
             photo_url: studentsById.get(e.student_id)?.photo_url || '',
             chest_number: studentsById.get(e.student_id)?.chest_number || '',
@@ -629,11 +641,14 @@ export const actions = {
       const docs = params.results.map((r) => {
         const student = studentsById.get(r.student_id);
         if (!student) throw new HttpError(400, 'One of the selected students no longer exists');
+        const category = text(r.category, 'Category', { max: 30 }) || '';
+        if (category && !CATEGORY_NAMES.includes(category)) throw new HttpError(400, `Category must be one of: ${CATEGORY_NAMES.join(', ')}`);
         return {
           _id: crypto.randomUUID(),
           competition_id: compId,
           student_id: r.student_id,
           house_id: student.house_id,
+          category,
           position: int(r.position, 'Position', { min: 1 }),
           points_earned: int(r.points_earned, 'Points', { min: 0, fallback: 0 }),
           remarks: text(r.remarks, 'Remarks', { max: 1000 }),
