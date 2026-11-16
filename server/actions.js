@@ -130,6 +130,51 @@ async function recalculateHousePoints(db) {
   ));
 }
 
+/**
+ * Completed competitions → the same competitions with their winners: the top three places of each
+ * category, ordered Sub Junior → Junior → Senior → Open. Three queries however many competitions.
+ */
+async function withWinners(db, comps, housesById) {
+  if (!comps.length) return [];
+  const entries = await db.collection('participation')
+    .find({ competition_id: { $in: comps.map((c) => c._id) } }).toArray();
+  const students = await db.collection('students')
+    .find({ _id: { $in: [...new Set(entries.map((e) => e.student_id))] } }, { projection: { name: 1, class: 1, photo_url: 1, chest_number: 1 } })
+    .toArray();
+  const studentsById = new Map(students.map((s) => [s._id, s]));
+
+  return comps.map((comp) => {
+    const groups = new Map();
+    const own = entries.filter((e) => e.competition_id === comp._id)
+      .sort((a, b) => categoryRank(a.category) - categoryRank(b.category) || byPosition(a, b));
+    for (const e of own) {
+      const key = e.category || '';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(e);
+    }
+    const top = [...groups.values()].flatMap((list) => {
+      const placed = list.filter((e) => e.position && e.position <= 3);
+      return placed.length ? placed : list.slice(0, 3);
+    });
+    return {
+      ...toClient(comp),
+      winners: top.map((e) => {
+        const s = studentsById.get(e.student_id);
+        return {
+          name: s?.name || 'Unknown',
+          class: s?.class || '',
+          house: housesById.get(e.house_id)?.name || '',
+          position: e.position,
+          category: e.category || '',
+          points: e.points_earned,
+          photo_url: s?.photo_url || '',
+          chest_number: s?.chest_number || '',
+        };
+      }),
+    };
+  });
+}
+
 // ── Actions ──
 // `admin: true` actions require a signed-in admin; the rest are public.
 
@@ -141,45 +186,26 @@ export const actions = {
       const houses = await db.collection('houses').find().sort({ total_points: -1, name: 1 }).toArray();
       const housesById = new Map(houses.map((h) => [h._id, h]));
 
+      // The Houses page shows the latest two results in full; older ones come from results.archive.
       const completed = await db.collection('competitions')
-        .find({ status: 'completed' }).sort({ competition_date: -1 }).limit(5).toArray();
-
-      const results = [];
-      for (const comp of completed) {
-        const entries = await db.collection('participation').find({ competition_id: comp._id }).toArray();
-        // Top three places of each category (Sub Junior, Junior, Senior, Open), in that order.
-        const groups = new Map();
-        for (const e of entries.sort((a, b) => categoryRank(a.category) - categoryRank(b.category) || byPosition(a, b))) {
-          const key = e.category || '';
-          if (!groups.has(key)) groups.set(key, []);
-          groups.get(key).push(e);
-        }
-        const top = [...groups.values()].flatMap((list) => {
-          const placed = list.filter((e) => e.position && e.position <= 3);
-          return placed.length ? placed : list.slice(0, 3);
-        });
-        const students = await db.collection('students')
-          .find({ _id: { $in: top.map((e) => e.student_id) } }, { projection: { name: 1, photo_url: 1, chest_number: 1 } })
-          .toArray();
-        const studentsById = new Map(students.map((s) => [s._id, s]));
-        results.push({
-          ...toClient(comp),
-          winners: top.map((e) => ({
-            name: studentsById.get(e.student_id)?.name || 'Unknown',
-            house: housesById.get(e.house_id)?.name || '',
-            position: e.position,
-            category: e.category || '',
-            points: e.points_earned,
-            photo_url: studentsById.get(e.student_id)?.photo_url || '',
-            chest_number: studentsById.get(e.student_id)?.chest_number || '',
-          })),
-        });
-      }
+        .find({ status: 'completed' }).sort({ competition_date: -1, created_at: -1 }).limit(2).toArray();
+      const results = await withWinners(db, completed, housesById);
 
       const upcoming = await db.collection('competitions')
         .find({ status: { $in: ['upcoming', 'ongoing'] } }).sort({ competition_date: 1 }).limit(5).toArray();
 
       return { houses: houses.map(toClient), results, upcoming: upcoming.map(toClient) };
+    },
+  },
+
+  // Every completed competition with its winners, newest first — the searchable list of past results.
+  'results.archive': {
+    async run(db) {
+      const houses = await db.collection('houses').find({}, { projection: { name: 1 } }).toArray();
+      const completed = await db.collection('competitions')
+        .find({ status: 'completed' }, { projection: { name: 1, type: 1, competition_date: 1, description: 1, created_at: 1 } })
+        .sort({ competition_date: -1, created_at: -1 }).limit(500).toArray();
+      return withWinners(db, completed, new Map(houses.map((h) => [h._id, h])));
     },
   },
 

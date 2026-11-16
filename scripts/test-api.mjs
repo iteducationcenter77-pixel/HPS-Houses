@@ -438,6 +438,14 @@ try {
       ['Junior', 1, 'Cat JR One'], ['Junior', 2, 'Cat JR Two'],
       ['Senior', 1, 'Cat SR One'],
     ]);
+    // The Houses page shows the latest two in full; every completed result is in the public archive.
+    const dash = (await call('dashboard.get', {}, { auth: false })).data;
+    assert.ok(dash.results.length <= 2);
+    const archive = await call('results.archive', {}, { auth: false });
+    assert.equal(archive.status, 200);
+    const inArchive = archive.data.find((r) => r.id === c.id);
+    assert.deepEqual(inArchive.winners.map((w) => w.name), result.winners.map((w) => w.name));
+    assert.equal(JSON.stringify(archive.data).includes('contact_number'), false, 'no contact numbers in the archive');
     await call('competitions.delete', { id: c.id });
     for (const s of [...sj, ...jr, sr]) await call('students.delete', { id: s.id });
   });

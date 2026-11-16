@@ -8,7 +8,7 @@ import {
   LifeBuoy, Lightbulb, Mail, MapPin, Megaphone, Menu, MessageCircle, Microscope, Monitor, Palette, Phone,
   Presentation, Quote, Send, Shield, Sparkles, Star, Target, Trophy, Users, X, Zap, ChevronLeft, ChevronRight,
   Cctv, Bell, ChevronUp, ChevronDown, Trash2, Plus, Upload, ExternalLink, Link, Image as ImageIcon, Check,
-  ImagePlus, LayoutPanelTop, School, Newspaper, Info, RotateCcw,
+  ImagePlus, LayoutPanelTop, School, Newspaper, Info, RotateCcw, Search,
 } from 'lucide';
 import { siWhatsapp, siInstagram, siFacebook } from 'simple-icons';
 
@@ -58,7 +58,7 @@ const ICONS = {
   LifeBuoy, Lightbulb, Mail, MapPin, Megaphone, Menu, MessageCircle, Microscope, Monitor, Palette, Phone,
   Presentation, Quote, Send, Shield, Sparkles, Star, Target, Trophy, Users, X, Zap, ChevronLeft, ChevronRight,
   Cctv, Bell, ChevronUp, ChevronDown, Trash2, Plus, Upload, ExternalLink, Link, Image: ImageIcon, Check,
-  ImagePlus, LayoutPanelTop, School, Newspaper, Info, RotateCcw,
+  ImagePlus, LayoutPanelTop, School, Newspaper, Info, RotateCcw, Search,
 };
 
 const attrs = (obj) => Object.entries(obj).map(([k, v]) => `${k}="${esc(v)}"`).join(' ');

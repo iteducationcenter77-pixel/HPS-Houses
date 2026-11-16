@@ -9,6 +9,7 @@ import { CATEGORIES, OPEN_CATEGORY } from '../../../shared/categories.js';
 
 // Start loading the live data while the page frame is prepared.
 const dataPromise = api('dashboard.get').catch(() => null);
+const archivePromise = api('results.archive').catch(() => null);
 
 const hex = (c) => (/^#[0-9a-f]{6}$/i.test(c || '') ? c : '#e9b949');
 const houseByName = (houses, name) => houses.find((h) => h.name === name);
@@ -59,46 +60,128 @@ function distribution(houses) {
 
 const MEDALS = ['gold', 'silver', 'bronze'];
 
+function place(w, i, houses) {
+  const color = hex(houseByName(houses, w.house)?.color_hex);
+  const pos = Number(w.position) || i + 1;
+  return `
+    <li class="hz-place hz-place--${MEDALS[pos - 1] || 'other'}" style="--hc:${color}">
+      <span class="hz-medal" title="${esc(ordinal(pos))} place">${pos}</span>
+      <span class="hz-avatar">${w.photo_url ? img(w.photo_url, w.name) : `<span>${esc(initials(w.name))}</span>`}</span>
+      <span class="hz-who">
+        <strong>${esc(w.name)}</strong>
+        <small><i></i>${esc(w.house || '')}${w.chest_number ? ` · Chest No. ${esc(w.chest_number)}` : ''}</small>
+      </span>
+      <span class="hz-gain">+${Number(w.points) || 0}</span>
+    </li>`;
+}
+
+/**
+ * A competition's winners side by side: one column per category (Sub Junior | Junior | Senior, plus Open
+ * when used). Winners arrive ordered by category, then place.
+ */
+function categoryColumns(winners, houses) {
+  if (!winners.length) return '<p class="hz-place-none">Results are being finalised.</p>';
+  const byCat = new Map();
+  for (const w of winners) {
+    const key = w.category || '';
+    if (!byCat.has(key)) byCat.set(key, []);
+    byCat.get(key).push(w);
+  }
+  // Results saved before categories existed: one plain list.
+  if (byCat.size === 1 && byCat.has('')) {
+    return `<ol class="hz-podium hz-podium--plain">${winners.map((w, i) => place(w, i, houses)).join('')}</ol>`;
+  }
+  const columns = [...CATEGORIES.map((c) => c.name), OPEN_CATEGORY, ''].filter((name) => byCat.has(name) || CATEGORIES.some((c) => c.name === name));
+  return `
+    <div class="hz-cats hz-cats--${columns.length}">
+      ${columns.map((name) => `
+        <section class="hz-catcol">
+          <p class="hz-cat"><strong>${esc(name || 'Other')}</strong><span>${esc(classesOf(name))}</span></p>
+          ${byCat.has(name)
+            ? `<ol class="hz-podium">${byCat.get(name).map((w, i) => place(w, i, houses)).join('')}</ol>`
+            : '<p class="hz-cat-none">No entries in this category</p>'}
+        </section>`).join('')}
+    </div>`;
+}
+
 function results(list, houses) {
   if (!list.length) {
     return `<div class="hz-empty">${icon('Award')}<p>No competition results yet — they appear here as soon as results are entered.</p></div>`;
   }
-  const place = (w, i, houses) => {
-    const color = hex(houseByName(houses, w.house)?.color_hex);
-    const pos = Number(w.position) || i + 1;
-    return `
-      <li class="hz-place hz-place--${MEDALS[pos - 1] || 'other'}" style="--hc:${color}">
-        <span class="hz-medal" title="${esc(ordinal(pos))} place">${pos}</span>
-        <span class="hz-avatar">${w.photo_url ? img(w.photo_url, w.name) : `<span>${esc(initials(w.name))}</span>`}</span>
-        <span class="hz-who">
-          <strong>${esc(w.name)}</strong>
-          <small><i></i>${esc(w.house || '')}${w.chest_number ? ` · Chest No. ${esc(w.chest_number)}` : ''}</small>
-        </span>
-        <span class="hz-gain">+${Number(w.points) || 0}</span>
-      </li>`;
-  };
-  // Winners arrive already ordered Sub Junior → Junior → Senior → Open; group them under a small heading.
-  const podiums = (winners) => {
-    if (!winners.length) return '<ol class="hz-podium"><li class="hz-place-none">Results are being finalised.</li></ol>';
-    const groups = [];
-    for (const w of winners) {
-      const last = groups[groups.length - 1];
-      if (last && last.category === (w.category || '')) last.list.push(w);
-      else groups.push({ category: w.category || '', list: [w] });
-    }
-    return groups.map((g) => `
-      ${g.category ? `<p class="hz-cat"><strong>${esc(g.category)}</strong><span>${esc(classesOf(g.category))}</span></p>` : ''}
-      <ol class="hz-podium">${g.list.map((w, i) => place(w, i, houses)).join('')}</ol>`).join('');
-  };
-  return list.map((c) => `
+  return list.map((c, i) => `
     <article class="hz-result">
       <header class="hz-result-head">
-        <span class="tag">${esc(c.type || 'Competition')}</span>
-        ${c.competition_date ? `<time>${icon('Calendar')}${esc(formatDate(c.competition_date))}</time>` : ''}
+        <div class="hz-result-title">
+          <span class="hz-result-flag">${i === 0 ? 'Latest' : 'Previous'}</span>
+          <h3>${esc(c.name)}</h3>
+        </div>
+        <div class="hz-result-meta">
+          <span class="tag">${esc(c.type || 'Competition')}</span>
+          ${c.competition_date ? `<time>${icon('Calendar')}${esc(formatDate(c.competition_date))}</time>` : ''}
+        </div>
       </header>
-      <h3>${esc(c.name)}</h3>
-      ${podiums(c.winners || [])}
+      ${categoryColumns(c.winners || [], houses)}
     </article>`).join('');
+}
+
+// ── Past results: every completed competition, searchable ──
+
+const ARCHIVE_PAGE = 10;
+
+function archiveItem(c, houses, open) {
+  const count = (c.winners || []).length;
+  return `
+    <details class="hz-arch"${open ? ' open' : ''}>
+      <summary>
+        <span class="hz-arch-date">${c.competition_date ? esc(formatDate(c.competition_date)) : '—'}</span>
+        <span class="hz-arch-name">${esc(c.name)}</span>
+        <span class="tag">${esc(c.type || 'Competition')}</span>
+        <span class="hz-arch-count">${count} winner${count === 1 ? '' : 's'}</span>
+        <span class="hz-arch-chev" aria-hidden="true"></span>
+      </summary>
+      <div class="hz-arch-body">${categoryColumns(c.winners || [], houses)}</div>
+    </details>`;
+}
+
+function mountArchive(root, all, latestIds, houses) {
+  const listEl = root.querySelector('#hz-archive');
+  const countEl = root.querySelector('#hz-archive-count');
+  const search = root.querySelector('#hz-archive-search');
+  const typeSel = root.querySelector('#hz-archive-type');
+  const more = root.querySelector('#hz-archive-more');
+  if (!all) {
+    listEl.innerHTML = '<p class="hz-arch-empty">Past results are unavailable right now. Please try again shortly.</p>';
+    return;
+  }
+  const hay = all.map((c) => [c.name, c.type, c.competition_date, formatDate(c.competition_date),
+    ...(c.winners || []).flatMap((w) => [w.name, w.house, w.chest_number, w.category, w.class])].join(' ').toLowerCase());
+  const winnerHay = all.map((c) => (c.winners || []).map((w) => `${w.name} ${w.chest_number}`).join(' ').toLowerCase());
+  let shown = ARCHIVE_PAGE;
+
+  const draw = () => {
+    const words = search.value.toLowerCase().split(/\s+/).filter(Boolean);
+    const type = typeSel.value;
+    // Without a search the list starts after the two results shown above; a search covers everything.
+    const matches = all
+      .map((c, i) => ({ c, i }))
+      .filter(({ c, i }) => (words.length || !latestIds.has(c.id))
+        && (!type || c.type === type)
+        && words.every((w) => hay[i].includes(w)));
+    const page = matches.slice(0, shown);
+    listEl.innerHTML = page.length
+      ? page.map(({ c, i }) => archiveItem(c, houses, words.length > 0 && words.every((w) => winnerHay[i].includes(w)))).join('')
+      : `<p class="hz-arch-empty">${words.length || type ? 'No results match your search.' : 'Earlier results will appear here as more competitions are completed.'}</p>`;
+    countEl.textContent = matches.length
+      ? `${words.length || type ? 'Found' : 'Showing'} ${matches.length} competition${matches.length === 1 ? '' : 's'}`
+      : '';
+    more.hidden = matches.length <= shown;
+  };
+
+  let timer;
+  search.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => { shown = ARCHIVE_PAGE; draw(); }, 120); });
+  typeSel.addEventListener('change', () => { shown = ARCHIVE_PAGE; draw(); });
+  more.addEventListener('click', () => { shown += ARCHIVE_PAGE; draw(); });
+  draw();
 }
 
 const ordinal = (n) => {
@@ -177,8 +260,25 @@ export function render(site) {
 
     <section class="blk blk--cream" id="results">
       <div class="wrap">
-        ${sectionHead({ kicker: 'Results', title: 'Recent competition results', text: 'The top three in each of the latest inter-house competitions.' })}
+        ${sectionHead({ kicker: 'Results', title: 'Latest competition results', text: 'The top three of every category — Sub Junior, Junior and Senior — in the two most recent inter-house competitions.' })}
         <div class="hz-results" id="hz-results" data-stagger></div>
+      </div>
+    </section>
+
+    <section class="blk hz-past" id="past-results">
+      <div class="wrap">
+        ${sectionHead({ kicker: 'Archive', title: 'Past results', text: 'Look up any earlier competition — search by competition, student name, chest number or house.' })}
+        <div class="hz-arch-tools" data-reveal>
+          <label class="hz-arch-search">${icon('Search')}
+            <input type="search" id="hz-archive-search" placeholder="Search competition, student, chest no. or house…" aria-label="Search past results" autocomplete="off">
+          </label>
+          <select id="hz-archive-type" aria-label="Competition type">
+            <option value="">All types</option><option>Sports</option><option>Academic</option><option>Cultural</option><option>Other</option>
+          </select>
+        </div>
+        <p class="hz-arch-found" id="hz-archive-count" aria-live="polite"></p>
+        <div class="hz-arch-list" id="hz-archive"><p class="hz-arch-empty">Loading past results…</p></div>
+        <button type="button" class="hz-arch-more" id="hz-archive-more" hidden>Show more</button>
       </div>
     </section>
 
@@ -197,4 +297,6 @@ export async function mount(root) {
   root.querySelector('#hz-share').innerHTML = distribution(houses);
   root.querySelector('#hz-results').innerHTML = results(data?.results || [], houses);
   root.querySelector('#hz-upcoming').innerHTML = upcoming(data?.upcoming || []);
+  const latestIds = new Set((data?.results || []).map((c) => c.id));
+  archivePromise.then((all) => mountArchive(root, all, latestIds, houses));
 }
