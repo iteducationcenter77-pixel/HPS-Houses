@@ -7,16 +7,60 @@ import { convertGDriveUrl, showToast, escapeHtml, debounce } from './utils.js';
 import { getCachedHouses, getHouses } from './houses.js';
 import { resizeImage } from './site-editor.js';
 
-let studentsCache = [];
+// The whole list is loaded once and kept for a minute; searching, filtering,
+// sorting and paging then happen instantly in the browser.
+let allStudents = null;
+let loadedAt = 0;
 
+export async function loadAllStudents({ force = false } = {}) {
+  if (!force && allStudents && Date.now() - loadedAt < 60_000) return allStudents;
+  allStudents = await api('students.list', {});
+  loadedAt = Date.now();
+  return allStudents;
+}
+
+export function forgetStudents() {
+  allStudents = null;
+}
+
+/** Back-compatible: the full list, optionally filtered (used elsewhere in the admin panel). */
 export async function getStudents(filters = {}) {
   try {
-    studentsCache = await api('students.list', { house_id: filters.house_id, search: filters.search });
+    const list = await loadAllStudents();
+    return list.filter((s) => (!filters.house_id || s.house_id === filters.house_id)
+      && (!filters.search || s.name.toLowerCase().includes(filters.search.toLowerCase())));
   } catch (err) {
     console.error(err);
-    studentsCache = [];
+    return [];
   }
-  return studentsCache;
+}
+
+// "Class 2" < "Class 10", "9" < "10": compare text with numbers in natural order.
+const collator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
+const SORTS = {
+  roll: (a, b) => (a.roll_number - b.roll_number) || collator.compare(a.class, b.class),
+  class: (a, b) => collator.compare(a.class, b.class) || (a.roll_number - b.roll_number),
+  name: (a, b) => collator.compare(a.name, b.name),
+  chest: (a, b) => (!a.chest_number - !b.chest_number) || collator.compare(a.chest_number || '', b.chest_number || '') || collator.compare(a.name, b.name),
+};
+const PAGE_SIZE = 50;
+let page = 1;
+
+function matches(s, words) {
+  const hay = `${s.name} ${s.class} ${s.roll_number} ${s.chest_number || ''} ${s.contact_number || ''} ${s.houses?.name || ''}`.toLowerCase();
+  return words.every((w) => hay.includes(w));
+}
+
+/**
+ * When roll numbers run across the whole school (almost all different), the same
+ * number on two students is probably a typing mistake — list those.
+ */
+function repeatedRolls(list) {
+  if (list.length < 20) return [];
+  const byRoll = new Map();
+  for (const s of list) byRoll.set(s.roll_number, [...(byRoll.get(s.roll_number) || []), s]);
+  if (byRoll.size / list.length < 0.9) return []; // roll numbers restart in each class: repeats are normal
+  return [...byRoll.entries()].filter(([, v]) => v.length > 1);
 }
 
 export async function addStudent(student) {
@@ -60,42 +104,62 @@ function avatar(s, size = 36) {
   const initial = escapeHtml((s.name || '?').charAt(0));
   const fallback = `<div class="student-photo student-photo--initial" style="--hc:${escapeHtml(color)};width:${size}px;height:${size}px">${initial}</div>`;
   return photo
-    ? `<img class="student-photo" style="width:${size}px;height:${size}px" src="${escapeHtml(photo)}" alt="" onerror="this.outerHTML=this.dataset.fallback" data-fallback="${escapeHtml(fallback)}">`
+    ? `<img class="student-photo" style="width:${size}px;height:${size}px" src="${escapeHtml(photo)}" alt="" loading="lazy" decoding="async" onerror="this.outerHTML=this.dataset.fallback" data-fallback="${escapeHtml(fallback)}">`
     : fallback;
 }
 
 export function renderStudentsPage(container, openModal) {
+  page = 1;
   container.innerHTML = `
     <div class="table-container">
       <div class="table-header">
         <h3>Manage Students</h3>
-        <div style="display:flex;gap:var(--space-sm);align-items:center;flex-wrap:wrap">
-          <div class="table-search">
-            <input type="text" id="student-search" placeholder="Search by name…" class="form-input" style="width:200px;padding:8px 14px;font-size:var(--font-sm)">
-          </div>
-          <select id="student-house-filter" class="form-select" style="width:150px;padding:8px 12px;font-size:var(--font-sm)">
-            <option value="">All Houses</option>
+        <div class="students-tools">
+          <input type="search" id="student-search" placeholder="Search name, roll, chest no., class…" class="form-input" autocomplete="off">
+          <select id="student-house-filter" class="form-select" aria-label="Filter by house"><option value="">All houses</option></select>
+          <select id="student-sort" class="form-select" aria-label="Sort by">
+            <option value="roll">Sort: Roll no.</option>
+            <option value="class">Sort: Class</option>
+            <option value="name">Sort: Name</option>
+            <option value="chest">Sort: Chest no.</option>
           </select>
           <button class="btn btn-secondary btn-sm" id="import-students-btn">⇪ Import from Excel</button>
           <button class="btn btn-primary btn-sm" id="add-student-btn">+ Add Student</button>
         </div>
       </div>
+      <div id="students-notice"></div>
       <div class="table-body">
         <table class="data-table">
           <thead><tr><th>Photo</th><th>Name</th><th>Chest No.</th><th>Class</th><th>Roll No</th><th>House</th><th>Contact</th><th>Actions</th></tr></thead>
           <tbody id="students-tbody"><tr><td colspan="8"><div class="spinner"></div></td></tr></tbody>
         </table>
       </div>
-      <div class="table-foot" id="students-count"></div>
+      <div class="table-foot students-foot" id="students-foot"></div>
     </div>`;
 
   populateHouseFilter();
   loadStudentsTable(openModal);
 
+  const refresh = () => { page = 1; drawStudents(openModal); };
   document.getElementById('add-student-btn').addEventListener('click', () => openStudentModal(null, openModal));
   document.getElementById('import-students-btn').addEventListener('click', () => openImportModal(openModal));
-  document.getElementById('student-search').addEventListener('input', debounce(() => loadStudentsTable(openModal), 300));
-  document.getElementById('student-house-filter').addEventListener('change', () => loadStudentsTable(openModal));
+  document.getElementById('student-search').addEventListener('input', debounce(refresh, 120));
+  document.getElementById('student-house-filter').addEventListener('change', refresh);
+  document.getElementById('student-sort').addEventListener('change', refresh);
+
+  container.onclick = (e) => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    if (btn.dataset.page) { page = Number(btn.dataset.page); drawStudents(openModal); container.querySelector('.table-container').scrollIntoView({ block: 'start' }); return; }
+    const id = btn.dataset.id;
+    if (!id) return;
+    const student = (allStudents || []).find((s) => s.id === id);
+    if (btn.classList.contains('edit-student') && student) openStudentModal(student, openModal);
+    if (btn.classList.contains('del-student') && student) {
+      if (!confirm(`Remove ${student.name}? Their past competition results are kept.`)) return;
+      deleteStudent(id).then((ok) => { if (ok) loadStudentsTable(openModal, { force: true }); });
+    }
+  };
 }
 
 async function populateHouseFilter() {
@@ -109,52 +173,84 @@ async function populateHouseFilter() {
   });
 }
 
-async function loadStudentsTable(openModal) {
-  const search = document.getElementById('student-search')?.value || '';
-  const houseId = document.getElementById('student-house-filter')?.value || '';
-  const students = await getStudents({ search, house_id: houseId || undefined });
-  const tbody = document.getElementById('students-tbody');
-  if (!tbody) return;
-  const count = document.getElementById('students-count');
-  if (count) count.textContent = students.length ? `${students.length} student${students.length === 1 ? '' : 's'}` : '';
-
-  if (!students.length) {
-    tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><p>No students found</p><p style="font-size:var(--font-sm);margin-top:8px">Add them one by one, or use <strong>Import from Excel</strong> to add many at once.</p></div></td></tr>`;
+/** Fetch the list (or reuse the one in memory), then draw it. */
+async function loadStudentsTable(openModal, { force = false } = {}) {
+  try {
+    await loadAllStudents({ force });
+  } catch (err) {
+    const tbody = document.getElementById('students-tbody');
+    if (tbody) tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><p>Could not load students: ${escapeHtml(err.message)}</p></div></td></tr>`;
     return;
   }
-
-  tbody.innerHTML = students.map((s) => {
-    const hColor = s.houses?.color_hex || '#8a94a6';
-    return `<tr>
-      <td>${avatar(s)}</td>
-      <td><strong style="color:var(--white)">${escapeHtml(s.name)}</strong></td>
-      <td>${s.chest_number ? `<span class="chest-badge">${escapeHtml(s.chest_number)}</span>` : '<span style="color:var(--text-muted)">—</span>'}</td>
-      <td>${escapeHtml(s.class)}</td>
-      <td>${escapeHtml(s.roll_number)}</td>
-      <td><span class="house-dot" style="background:${escapeHtml(hColor)}"></span>${escapeHtml(s.houses?.name || '')}</td>
-      <td>${escapeHtml(s.contact_number || '—')}</td>
-      <td><div class="table-actions">
-        <button class="btn btn-secondary btn-sm edit-student" data-id="${escapeHtml(s.id)}">Edit</button>
-        <button class="btn btn-danger btn-sm del-student" data-id="${escapeHtml(s.id)}">Delete</button>
-      </div></td>
-    </tr>`;
-  }).join('');
-
-  tbody.querySelectorAll('.edit-student').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const st = students.find((s) => s.id === btn.dataset.id);
-      if (st) openStudentModal(st, openModal);
-    });
-  });
-  tbody.querySelectorAll('.del-student').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      if (confirm('Remove this student? Their past competition results are kept.')) {
-        await deleteStudent(btn.dataset.id);
-        loadStudentsTable(openModal);
-      }
-    });
-  });
+  drawStudents(openModal);
 }
+
+function drawStudents() {
+  const tbody = document.getElementById('students-tbody');
+  if (!tbody || !allStudents) return;
+  const words = (document.getElementById('student-search')?.value || '').toLowerCase().split(/\s+/).filter(Boolean);
+  const houseId = document.getElementById('student-house-filter')?.value || '';
+  const sortKey = document.getElementById('student-sort')?.value || 'roll';
+
+  const filtered = allStudents
+    .filter((s) => (!houseId || s.house_id === houseId) && (!words.length || matches(s, words)))
+    .sort(SORTS[sortKey] || SORTS.roll);
+  const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  page = Math.min(Math.max(1, page), pages);
+  const start = (page - 1) * PAGE_SIZE;
+  const shown = filtered.slice(start, start + PAGE_SIZE);
+
+  // Repeated roll numbers (only meaningful when numbers run across the school).
+  const notice = document.getElementById('students-notice');
+  const repeats = repeatedRolls(allStudents);
+  if (notice) {
+    notice.innerHTML = repeats.length ? `
+      <div class="students-alert">
+        <strong>Check these roll numbers — each is used by more than one student:</strong>
+        <ul>${repeats.slice(0, 10).map(([roll, list]) => `<li>Roll no. ${escapeHtml(roll)}: ${list.map((s) => `${escapeHtml(s.name)} (${escapeHtml(s.class)})`).join(', ')}</li>`).join('')}</ul>
+      </div>` : '';
+  }
+
+  if (!shown.length) {
+    tbody.innerHTML = allStudents.length
+      ? '<tr><td colspan="8"><div class="empty-state"><p>No students match your search.</p></div></td></tr>'
+      : '<tr><td colspan="8"><div class="empty-state"><p>No students yet</p><p style="font-size:var(--font-sm);margin-top:8px">Add them one by one, or use <strong>Import from Excel</strong> to add many at once.</p></div></td></tr>';
+  } else {
+    tbody.innerHTML = shown.map((s) => {
+      const hColor = s.houses?.color_hex || '#8a94a6';
+      return `<tr>
+        <td>${avatar(s)}</td>
+        <td><strong style="color:var(--white)">${escapeHtml(s.name)}</strong></td>
+        <td>${s.chest_number ? `<span class="chest-badge">${escapeHtml(s.chest_number)}</span>` : '<span style="color:var(--text-muted)">—</span>'}</td>
+        <td>${escapeHtml(s.class)}</td>
+        <td>${escapeHtml(s.roll_number)}</td>
+        <td><span class="house-dot" style="background:${escapeHtml(hColor)}"></span>${escapeHtml(s.houses?.name || '')}</td>
+        <td>${escapeHtml(s.contact_number || '—')}</td>
+        <td><div class="table-actions">
+          <button class="btn btn-secondary btn-sm edit-student" data-id="${escapeHtml(s.id)}">Edit</button>
+          <button class="btn btn-danger btn-sm del-student" data-id="${escapeHtml(s.id)}">Delete</button>
+        </div></td>
+      </tr>`;
+    }).join('');
+  }
+
+  const foot = document.getElementById('students-foot');
+  if (foot) {
+    const total = allStudents.length;
+    const label = filtered.length === total
+      ? `${total} student${total === 1 ? '' : 's'}`
+      : `${filtered.length} of ${total} students match`;
+    foot.innerHTML = `
+      <span>${filtered.length ? `Showing ${start + 1}–${start + shown.length} · ` : ''}${label}</span>
+      ${pages > 1 ? `
+        <span class="pager">
+          <button class="btn btn-secondary btn-sm" data-page="${page - 1}"${page === 1 ? ' disabled' : ''}>‹ Previous</button>
+          <span>Page ${page} of ${pages}</span>
+          <button class="btn btn-secondary btn-sm" data-page="${page + 1}"${page === pages ? ' disabled' : ''}>Next ›</button>
+        </span>` : ''}`;
+  }
+}
+
 
 // ── Add / edit one student ──
 
@@ -225,7 +321,7 @@ function openStudentModal(student, openModal) {
     const label = document.getElementById('sf-upload-label');
     label.textContent = 'Uploading…';
     try {
-      const dataUrl = await resizeImage(file, { maxSize: 700, png: false });
+      const dataUrl = await resizeImage(file, { maxSize: 480, png: false });
       const { url } = await api('media.upload', { data_url: dataUrl });
       photoInput.value = url;
       preview.innerHTML = photoPreview(url);
@@ -250,7 +346,7 @@ function openStudentModal(student, openModal) {
     const success = isEdit ? await updateStudent(student.id, data) : await addStudent(data);
     if (success) {
       closeModal();
-      loadStudentsTable(openModal);
+      loadStudentsTable(openModal, { force: true });
     }
   });
 }
@@ -389,7 +485,7 @@ function openImportModal(openModal) {
       }
       closeModal();
       showToast(`Imported: ${res.added} added, ${res.updated} updated`, 'success');
-      loadStudentsTable(openModal);
+      loadStudentsTable(openModal, { force: true });
     } catch (err) {
       showToast(err.message || 'Import failed', 'error');
       btn.disabled = false;

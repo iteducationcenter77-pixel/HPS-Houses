@@ -3,7 +3,8 @@
 // ============================================
 
 import { api } from './api.js';
-import { formatDate, showToast, escapeHtml } from './utils.js';
+import { formatDate, showToast, escapeHtml, convertGDriveUrl } from './utils.js';
+import { loadAllStudents } from './students.js';
 
 export async function getCompetitions() {
   try {
@@ -202,58 +203,159 @@ function openCompModal(comp, openModal) {
 }
 
 async function openResultsModal(comp, openModal) {
-  const students = await getAllStudents();
-  const existing = await getParticipation(comp.id);
+  const [students, existing] = await Promise.all([
+    loadAllStudents().catch(() => []),
+    getParticipation(comp.id),
+  ]);
+  const byId = new Map(students.map((s) => [s.id, s]));
 
   openModal('Enter Results — ' + comp.name, `
-    <p style="color:var(--text-muted);font-size:var(--font-sm);margin-bottom:var(--space-lg)">Add participants, assign positions and points. Points will auto-update house totals.</p>
+    <p class="res-intro">Search for each participant by <strong>name, chest no., roll no. or class</strong>, then set their position and points. House totals update when you save.</p>
+    <div class="res-head"><span>Participant</span><span>Position</span><span>Points</span><span></span></div>
     <div id="results-list"></div>
     <button class="btn btn-secondary btn-sm" id="add-participant-btn" style="margin:var(--space-md) 0">+ Add Participant</button>
     <button class="btn btn-primary" id="save-results-btn" style="width:100%;margin-top:var(--space-md)">Save Results & Update Points</button>
   `);
+  document.getElementById('modal').classList.add('modal--wide');
 
   const list = document.getElementById('results-list');
-  let rows = existing.map(p => ({ student_id: p.student_id, position: p.position, points_earned: p.points_earned, remarks: p.remarks || '' }));
-  if (!rows.length) rows.push({ student_id: '', position: '', points_earned: 0, remarks: '' });
+  let rows = existing.map((p) => ({ student_id: p.student_id, position: p.position, points_earned: p.points_earned, remarks: p.remarks || '' }));
+  if (!rows.length) rows.push({ student_id: '', position: 1, points_earned: 0, remarks: '' });
 
-  function renderRows() {
-    list.innerHTML = rows.map((r, i) => `
-      <div class="participant-row" style="display:grid;grid-template-columns:1fr 80px 80px 40px;gap:8px;align-items:center;padding:8px;background:var(--primary);border-radius:8px;margin-bottom:8px;border:1px solid var(--border)">
-        <select class="form-select res-student" data-idx="${i}" style="padding:8px;font-size:var(--font-sm)">
-          <option value="">Select Student</option>
-          ${students.map(s => `<option value="${escapeHtml(s.id)}" ${r.student_id === s.id ? 'selected' : ''}>${s.chest_number ? `#${escapeHtml(s.chest_number)} · ` : ''}${escapeHtml(s.name)} (${escapeHtml(s.houses?.name || '')})</option>`).join('')}
-        </select>
-        <input class="form-input res-pos" data-idx="${i}" type="number" min="1" placeholder="Pos" value="${r.position || ''}" style="padding:8px;font-size:var(--font-sm)">
-        <input class="form-input res-pts" data-idx="${i}" type="number" min="0" placeholder="Pts" value="${r.points_earned || 0}" style="padding:8px;font-size:var(--font-sm)">
-        <button class="btn btn-danger btn-sm res-del" data-idx="${i}" style="padding:4px 8px">✕</button>
-      </div>
-    `).join('');
+  const meta = (s) => [s.class, s.houses?.name, s.chest_number ? `Chest ${s.chest_number}` : '', `Roll ${s.roll_number}`].filter(Boolean).join(' · ');
+  const face = (s) => {
+    const color = escapeHtml(s.houses?.color_hex || '#8a94a6');
+    const photo = convertGDriveUrl(s.photo_url);
+    return photo
+      ? `<img class="res-face" src="${escapeHtml(photo)}" alt="" loading="lazy">`
+      : `<span class="res-face res-face--initial" style="--hc:${color}">${escapeHtml((s.name || '?').charAt(0))}</span>`;
+  };
 
-    list.querySelectorAll('.res-student').forEach(el => el.addEventListener('change', (e) => { rows[e.target.dataset.idx].student_id = e.target.value; }));
-    list.querySelectorAll('.res-pos').forEach(el => el.addEventListener('input', (e) => { rows[e.target.dataset.idx].position = parseInt(e.target.value) || null; }));
-    list.querySelectorAll('.res-pts').forEach(el => el.addEventListener('input', (e) => { rows[e.target.dataset.idx].points_earned = parseInt(e.target.value) || 0; }));
-    list.querySelectorAll('.res-del').forEach(el => el.addEventListener('click', (e) => { rows.splice(e.target.dataset.idx, 1); renderRows(); }));
+  function pickerHtml(r, i) {
+    const s = byId.get(r.student_id);
+    if (s) {
+      return `
+        <div class="res-chosen" style="--hc:${escapeHtml(s.houses?.color_hex || '#8a94a6')}">
+          ${face(s)}
+          <span class="res-chosen-text"><strong>${escapeHtml(s.name)}</strong><small>${escapeHtml(meta(s))}</small></span>
+          <button type="button" class="btn btn-secondary btn-sm res-change" data-idx="${i}">Change</button>
+        </div>`;
+    }
+    return `
+      <div class="res-search-wrap">
+        <input class="form-input res-search" data-idx="${i}" placeholder="Search name, chest no., roll or class…" autocomplete="off" aria-autocomplete="list">
+        <div class="res-options" hidden></div>
+      </div>`;
   }
-  renderRows();
+
+  function renderRows(focusIdx = null) {
+    list.innerHTML = rows.map((r, i) => `
+      <div class="res-row" data-idx="${i}">
+        <div class="res-pick">${pickerHtml(r, i)}</div>
+        <input class="form-input res-pos" data-idx="${i}" type="number" min="1" placeholder="Pos" value="${r.position || ''}" aria-label="Position">
+        <input class="form-input res-pts" data-idx="${i}" type="number" min="0" placeholder="Pts" value="${r.points_earned || 0}" aria-label="Points">
+        <button type="button" class="btn btn-danger btn-sm res-del" data-idx="${i}" aria-label="Remove participant">✕</button>
+      </div>`).join('');
+    if (focusIdx !== null) list.querySelector(`.res-search[data-idx="${focusIdx}"]`)?.focus();
+  }
+
+  function search(text, idx) {
+    const words = text.toLowerCase().split(/\s+/).filter(Boolean);
+    const taken = new Set(rows.filter((r, i) => i !== idx && r.student_id).map((r) => r.student_id));
+    if (!words.length) return [];
+    return students.filter((s) => {
+      if (taken.has(s.id)) return false;
+      const hay = `${s.name} ${s.class} ${s.roll_number} ${s.chest_number || ''} ${s.houses?.name || ''}`.toLowerCase();
+      return words.every((w) => hay.includes(w));
+    }).slice(0, 8);
+  }
+
+  function showOptions(input) {
+    const idx = Number(input.dataset.idx);
+    const box = input.nextElementSibling;
+    const found = search(input.value, idx);
+    if (!input.value.trim()) { box.hidden = true; return; }
+    box.hidden = false;
+    box.innerHTML = found.length
+      ? found.map((s, k) => `
+          <button type="button" class="res-option${k === 0 ? ' is-active' : ''}" data-pick="${escapeHtml(s.id)}" data-idx="${idx}">
+            ${face(s)}<span><strong>${escapeHtml(s.name)}</strong><small>${escapeHtml(meta(s))}</small></span>
+          </button>`).join('')
+      : '<div class="res-none">No student found — try a chest number or class.</div>';
+  }
+
+  function pick(idx, id) {
+    rows[idx].student_id = id;
+    renderRows();
+    list.querySelector(`.res-pos[data-idx="${idx}"]`)?.focus();
+  }
+
+  list.addEventListener('input', (e) => {
+    const t = e.target;
+    const idx = Number(t.dataset.idx);
+    if (t.classList.contains('res-search')) showOptions(t);
+    if (t.classList.contains('res-pos')) rows[idx].position = parseInt(t.value, 10) || null;
+    if (t.classList.contains('res-pts')) rows[idx].points_earned = parseInt(t.value, 10) || 0;
+  });
+
+  list.addEventListener('keydown', (e) => {
+    const input = e.target.closest('.res-search');
+    if (!input) return;
+    const box = input.nextElementSibling;
+    const options = [...box.querySelectorAll('.res-option')];
+    const current = options.findIndex((o) => o.classList.contains('is-active'));
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!options.length) return;
+      const next = (current + (e.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length;
+      options.forEach((o, k) => o.classList.toggle('is-active', k === next));
+      options[next].scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const chosen = options[current >= 0 ? current : 0];
+      if (chosen) pick(Number(input.dataset.idx), chosen.dataset.pick);
+    } else if (e.key === 'Escape') {
+      box.hidden = true;
+    }
+  });
+
+  // mousedown (not click) so the choice registers before the search box loses focus
+  list.addEventListener('mousedown', (e) => {
+    const option = e.target.closest('.res-option');
+    if (option) { e.preventDefault(); pick(Number(option.dataset.idx), option.dataset.pick); }
+  });
+
+  list.addEventListener('click', (e) => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    const idx = Number(btn.dataset.idx);
+    if (btn.classList.contains('res-change')) { rows[idx].student_id = ''; renderRows(idx); }
+    if (btn.classList.contains('res-del')) { rows.splice(idx, 1); renderRows(); }
+  });
+
+  list.addEventListener('focusout', (e) => {
+    const input = e.target.closest('.res-search');
+    if (input) setTimeout(() => { if (document.activeElement !== input) input.nextElementSibling.hidden = true; }, 150);
+  });
+
+  renderRows(rows.length === 1 && !rows[0].student_id ? 0 : null);
 
   document.getElementById('add-participant-btn').addEventListener('click', () => {
-    rows.push({ student_id: '', position: '', points_earned: 0, remarks: '' });
-    renderRows();
+    const nextPos = Math.max(0, ...rows.map((r) => Number(r.position) || 0)) + 1;
+    rows.push({ student_id: '', position: nextPos, points_earned: 0, remarks: '' });
+    renderRows(rows.length - 1);
   });
 
   document.getElementById('save-results-btn').addEventListener('click', async () => {
-    const valid = rows.filter(r => r.student_id);
-    const results = valid.map(r => {
-      const student = students.find(s => s.id === r.student_id);
-      return {
-        competition_id: comp.id,
-        student_id: r.student_id,
-        house_id: student?.house_id || '',
-        position: r.position || null,
-        points_earned: r.points_earned || 0,
-        remarks: r.remarks || null
-      };
-    });
+    const valid = rows.filter((r) => r.student_id);
+    const results = valid.map((r) => ({
+      competition_id: comp.id,
+      student_id: r.student_id,
+      house_id: byId.get(r.student_id)?.house_id || '',
+      position: r.position || null,
+      points_earned: r.points_earned || 0,
+      remarks: r.remarks || null,
+    }));
     const success = await saveResults(comp.id, results);
     if (success) {
       document.getElementById('modal-backdrop').classList.remove('active');
