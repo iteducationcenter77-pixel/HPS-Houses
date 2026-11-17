@@ -23,7 +23,7 @@ function hpsServer() {
       const [path, query = ''] = req.url.split('?');
       const name = path.replace(/^\/|\/$/g, '');
       const target = name === 'events' ? 'news' : name;
-      if (PAGES.includes(target) && target !== 'index') req.url = `/${target}.html${query ? `?${query}` : ''}`;
+      if ((PAGES.includes(target) || target === 'slide') && target !== 'index') req.url = `/${target}.html${query ? `?${query}` : ''}`;
       next();
     });
 
@@ -101,6 +101,8 @@ export default defineConfig({
       input: Object.fromEntries([
         ...PAGES.map((page) => [page, resolve(__dirname, `${page}.html`)]),
         ['admin', resolve(__dirname, 'admin.html')],
+        // Corridor notice screen — only reachable by typing /slide.
+        ['slide', resolve(__dirname, 'slide.html')],
       ]),
     },
   },

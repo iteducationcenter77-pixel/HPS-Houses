@@ -499,6 +499,28 @@ try {
     assert.deepEqual(await pointsOf(), before, 'totals back where they were');
   });
 
+  await step('slideshow (/slide): settings are public to read, admin-only to change, and kept in range', async () => {
+    const first = await call('slideshow.get', {}, { auth: false });
+    assert.equal(first.status, 200);
+    assert.equal(first.data.slides.length, 9);
+    const slides = first.data.slides.map((s) => ({ ...s, enabled: s.key === 'leaderboard' || s.key === 'notices' }));
+    slides.find((s) => s.key === 'leaderboard').countdown = 5;
+    slides.find((s) => s.key === 'leaderboard').seconds = 9999; // too long → kept at 600
+    assert.equal((await call('slideshow.update', { settings: { slides } }, { auth: false })).status, 401);
+    assert.equal((await call('slideshow.update', { settings: { slides: slides.map((s) => ({ ...s, enabled: false })) } })).status, 400, 'at least one slide');
+    const saved = await call('slideshow.update', { settings: { transition: 'zoom', show_ticker: false, slides: [{ key: 'nope' }, ...slides.reverse()] } });
+    assert.equal(saved.status, 200, JSON.stringify(saved));
+    const read = (await call('slideshow.get', {}, { auth: false })).data;
+    assert.equal(read.transition, 'zoom');
+    assert.equal(read.show_ticker, false);
+    assert.ok(read.updated_at);
+    assert.deepEqual(read.slides.filter((s) => s.enabled).map((s) => s.key), ['leaderboard', 'notices'], 'order kept as sent');
+    const board = read.slides.find((s) => s.key === 'leaderboard');
+    assert.deepEqual([board.countdown, board.seconds], [5, 600]);
+    assert.equal(read.slides.some((s) => s.key === 'nope'), false);
+    await call('slideshow.update', { settings: { slides: first.data.slides } });
+  });
+
   await step('page banners: editable, unsafe links refused', async () => {
     assert.equal(SITE_DEFAULTS.banners.news_image.startsWith('/images/'), true);
     const saved = await call('site.update', { section: 'banners', data: { ...SITE_DEFAULTS.banners, news_image: 'https://example.com/n.jpg' } });

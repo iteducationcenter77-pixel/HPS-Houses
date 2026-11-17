@@ -7,6 +7,7 @@ import { HttpError, toClient } from './db.js';
 import { getSiteContent, saveSection, resetSection } from './site-content.js';
 import { storeImage } from './media.js';
 import { CATEGORY_NAMES, GENERAL_CATEGORY, FORMATS } from '../shared/categories.js';
+import { normalizeSlideshow } from '../shared/slideshow.js';
 import {
   verifyPassword, setAdminPassword, getAdminAuth, isAdminRequest,
   sessionCookie, clearedCookie, clientIp, assertLoginAllowed, recordFailedLogin,
@@ -224,6 +225,31 @@ export const actions = {
         .find({ status: 'completed' }, { projection: { name: 1, type: 1, competition_date: 1, description: 1, created_at: 1 } })
         .sort({ competition_date: -1, created_at: -1 }).limit(500).toArray();
       return withWinners(db, completed, new Map(houses.map((h) => [h._id, h])));
+    },
+  },
+
+  // Corridor screen (/slide) settings: which slides, in what order, how long, countdowns.
+  'slideshow.get': {
+    async run(db) {
+      const doc = await db.collection('admin_settings').findOne({ _id: 'slideshow' });
+      return { ...normalizeSlideshow(doc?.settings), updated_at: doc?.updated_at || null };
+    },
+  },
+
+  'slideshow.update': {
+    admin: true,
+    async run(db, params) {
+      const raw = params.settings;
+      if (!raw || typeof raw !== 'object' || !Array.isArray(raw.slides) || raw.slides.length > 50) {
+        throw new HttpError(400, 'Slideshow settings are invalid');
+      }
+      const settings = normalizeSlideshow(raw);
+      if (!settings.slides.some((s) => s.enabled)) throw new HttpError(400, 'Switch on at least one slide');
+      const updated_at = now();
+      await db.collection('admin_settings').updateOne(
+        { _id: 'slideshow' }, { $set: { settings, updated_at } }, { upsert: true },
+      );
+      return { ...settings, updated_at };
     },
   },
 

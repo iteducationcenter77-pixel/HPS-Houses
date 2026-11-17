@@ -13,6 +13,7 @@ import { renderHousesPage, getHouses } from './js/houses.js';
 import { renderStudentsPage } from './js/students.js';
 import { renderCompetitionsPage } from './js/competitions.js';
 import { renderPointsPage } from './js/points.js';
+import { renderSlideshowPage, hasUnsavedSlideshowChanges } from './js/slideshow.js';
 import { showToast, loadSchoolLogo } from './js/utils.js';
 import { api } from './js/api.js';
 import { renderWebsitePage, hasUnsavedWebsiteChanges, forgetWebsiteEditor } from './js/site-editor.js';
@@ -150,6 +151,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (currentPage === 'website' && page !== 'website' && hasUnsavedWebsiteChanges()
       && !confirm('You have unsaved website changes. Leave without saving?')) return;
     if (currentPage === 'website') forgetWebsiteEditor();
+    if (currentPage === 'slideshow' && page !== 'slideshow' && hasUnsavedSlideshowChanges()
+      && !confirm('You have unsaved slideshow changes. Leave without saving?')) return;
     currentPage = page;
 
     // Update sidebar active state
@@ -160,7 +163,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Update title
     const titles = {
       dashboard: 'Dashboard', website: 'Website', enquiries: 'Enquiries', houses: 'Houses',
-      students: 'Students', competitions: 'Competitions', points: 'Bonus & Penalty', settings: 'Settings',
+      students: 'Students', competitions: 'Competitions', points: 'Bonus & Penalty', slideshow: 'Slideshow', settings: 'Settings',
     };
     document.getElementById('page-title').textContent = titles[page] || 'Dashboard';
 
@@ -180,6 +183,7 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'students': renderStudentsPage(content, openModal); break;
       case 'competitions': renderCompetitionsPage(content, openModal); break;
       case 'points': renderPointsPage(content); break;
+      case 'slideshow': renderSlideshowPage(content); break;
       case 'settings': renderSettingsPage(content, openModal); break;
       default: renderDashboardPage(content);
     }
