@@ -29,6 +29,40 @@ export async function storeImage(db, dataUrl) {
   return { id: _id, url: `/api/media?id=${_id}` };
 }
 
+const MEDIA_ID = /\/api\/media\?id=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/g;
+
+/** Every uploaded-image id mentioned anywhere inside `value`. */
+export function mediaIdsIn(value) {
+  return new Set([...JSON.stringify(value ?? null).matchAll(MEDIA_ID)].map((m) => m[1]));
+}
+
+/**
+ * Deletes uploaded images that are no longer used anywhere — for example photos just removed
+ * from the gallery — so they stop taking up database space. Only the given ids are considered,
+ * and each one is kept if any website section, student, house or setting still points at it.
+ */
+export async function pruneMedia(db, ids) {
+  const candidates = [...ids];
+  if (!candidates.length) return 0;
+  const [site, settings, houses, students] = await Promise.all([
+    db.collection('site_content').find().toArray(),
+    db.collection('admin_settings').find().toArray(),
+    db.collection('houses').find().toArray(),
+    db.collection('students').find({ photo_url: { $in: candidates.map((id) => `/api/media?id=${id}`) } }, { projection: { photo_url: 1 } }).toArray(),
+  ]);
+  const inUse = mediaIdsIn([site, settings, houses, students]);
+  const unused = candidates.filter((id) => !inUse.has(id));
+  if (!unused.length) return 0;
+  const { deletedCount } = await db.collection('media').deleteMany({ _id: { $in: unused } });
+  return deletedCount;
+}
+
+/** How much space uploaded images take. */
+export async function mediaUsage(db) {
+  const [row] = await db.collection('media').aggregate([{ $group: { _id: null, count: { $sum: 1 }, bytes: { $sum: '$size' } } }]).toArray();
+  return { count: row?.count || 0, bytes: row?.bytes || 0 };
+}
+
 /** GET /api/media?id=… */
 export async function handleMedia(request) {
   try {

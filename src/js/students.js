@@ -321,7 +321,7 @@ function openStudentModal(student, openModal) {
     const label = document.getElementById('sf-upload-label');
     label.textContent = 'Uploading…';
     try {
-      const dataUrl = await resizeImage(file, { maxSize: 480, png: false });
+      const dataUrl = await resizeImage(file, { maxSize: 480, png: false, maxBytes: 80_000 });
       const { url } = await api('media.upload', { data_url: dataUrl });
       photoInput.value = url;
       preview.innerHTML = photoPreview(url);

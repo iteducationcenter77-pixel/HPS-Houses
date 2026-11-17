@@ -530,6 +530,31 @@ try {
     await call('site.reset', { section: 'banners' });
   });
 
+  await step('gallery: removed photos are deleted from storage unless still used elsewhere', async () => {
+    const webp = (n) => `data:image/webp;base64,${Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WEBPVP8 '), Buffer.alloc(16, n)]).toString('base64')}`;
+    const a = (await call('media.upload', { data_url: webp(1) })).data;
+    const b = (await call('media.upload', { data_url: webp(2) })).data;
+    const photo = (url) => ({ image: url, title: '', category: 'Test Bulk', text: '' });
+    const base = SITE_DEFAULTS.gallery;
+    const usage0 = (await call('media.usage')).data;
+    assert.ok(usage0.count >= 2 && usage0.bytes > 0);
+    assert.equal((await call('media.usage', {}, { auth: false })).status, 401);
+
+    let r = await call('site.update', { section: 'gallery', data: { ...base, items: [photo(a.url), photo(b.url), ...base.items] } });
+    assert.equal(r.status, 200);
+    assert.equal(r.data.freed, 0);
+    // Photo A is also used as a page banner, so taking it out of the gallery must keep it.
+    await call('site.update', { section: 'banners', data: { ...SITE_DEFAULTS.banners, news_image: a.url } });
+    r = await call('site.update', { section: 'gallery', data: { ...base, items: base.items } });
+    assert.equal(r.data.freed, 1); // B only
+    assert.equal(await db.collection('media').countDocuments({ _id: { $in: [a.id, b.id] } }), 1);
+    r = await call('site.reset', { section: 'banners' });
+    assert.equal(r.data.freed, 1); // A is now unused everywhere
+    assert.equal(await db.collection('media').countDocuments({ _id: { $in: [a.id, b.id] } }), 0);
+    await call('site.reset', { section: 'gallery' });
+    assert.equal((await call('site.update', { section: 'gallery', data: { ...base, items: Array(601).fill(photo('/images/x.jpg')) } })).status, 400);
+  });
+
   await step("local password reset: refused unless it is the owner's own computer", async () => {
     cookie = '';
     const next = PASSWORD + '-local';

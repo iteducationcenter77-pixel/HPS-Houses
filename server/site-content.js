@@ -10,7 +10,7 @@ const URL_KEYS = new Set([
   'image', 'photo', 'logo_url', 'crest_url', 'facebook_url', 'instagram_url', 'prospectus_url', 'map_url',
 ]);
 const MAX_TEXT = 8000;
-const MAX_ITEMS = 300;
+const MAX_ITEMS = 600;
 
 /** Allows site-relative paths, web links, email and phone links — never javascript: or data: */
 export function isSafeUrl(value) {

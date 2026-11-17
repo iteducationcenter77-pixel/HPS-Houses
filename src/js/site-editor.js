@@ -147,6 +147,23 @@ const SMALL_PHOTO_KEYS = new Set(['photo', 'crest_url']);
 let current = null; // { key, data, saved }
 let expanded = new Set();
 
+// Gallery: bulk upload and category filter
+const BULK_MAX = 100; // photos in one go
+const GALLERY_MAX = 600; // matches the server's list limit
+let galleryFilter = ''; // category shown in the Photos list ('' = all)
+let lastBulkCategory = '';
+let bulkNote = ''; // result of the last bulk upload, shown in its card
+let bulkBusy = false;
+let mediaUse = null; // { count, bytes } of uploaded pictures
+
+const kb = (bytes) => (bytes >= 1_000_000 ? `${(bytes / 1_000_000).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1000))} KB`);
+const categoryOfPhoto = (x) => (x.category || '').trim() || 'Uncategorised';
+const photoCategories = (items) => {
+  const counts = new Map();
+  for (const x of items || []) { const c = categoryOfPhoto(x); counts.set(c, (counts.get(c) || 0) + 1); }
+  return [...counts];
+};
+
 const clone = (v) => JSON.parse(JSON.stringify(v));
 const esc = escapeHtml;
 const label = (key) => LABELS[key] || key.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
@@ -255,6 +272,10 @@ function listHtml(key, list, template, path, { showTitle = true } = {}) {
   const pk = JSON.stringify(path);
   const itemKeys = list.map((_, i) => JSON.stringify([...path, i]));
   const allOpen = isObject && list.length > 0 && itemKeys.every((k) => expanded.has(k));
+  const isPhotos = current.key === 'gallery' && pk === '["items"]';
+  const cats = isPhotos ? photoCategories(list) : [];
+  if (isPhotos && galleryFilter && !cats.some(([c]) => c === galleryFilter)) galleryFilter = '';
+  const shown = isPhotos && galleryFilter ? list.filter((x) => categoryOfPhoto(x) === galleryFilter).length : list.length;
 
   const rows = list.map((item, i) => {
     const ipk = itemKeys[i];
@@ -270,15 +291,16 @@ function listHtml(key, list, template, path, { showTitle = true } = {}) {
     const open = expanded.has(ipk);
     const thumb = imageSrc(item.photo || item.image);
     const title = titleOf(item);
-    const sub = subtitleOf(item);
+    const sub = isPhotos && !item.title ? categoryOfPhoto(item) : subtitleOf(item);
+    const hidden = isPhotos && galleryFilter && categoryOfPhoto(item) !== galleryFilter;
     return `
-      <div class="se-item${open ? ' is-open' : ''}">
+      <div class="se-item${open ? ' is-open' : ''}"${hidden ? ' hidden' : ''}>
         <div class="se-item-head">
           <button type="button" class="se-item-toggle" data-toggle="${esc(ipk)}" aria-expanded="${open}">
             <span class="se-index">${pad2(i + 1)}</span>
             ${thumb ? `<img class="se-item-thumb" src="${esc(thumb)}" alt="">` : ''}
             <span class="se-item-text">
-              <strong>${title ? esc(title) : `<em>New ${esc(name)}</em>`}</strong>
+              <strong>${title ? esc(title) : `<em>${isPhotos && item.image ? 'Untitled photo' : `New ${esc(name)}`}</em>`}</strong>
               ${sub ? `<small>${esc(sub)}</small>` : ''}
             </span>
             <span class="se-chevron">${icon('ChevronDown')}</span>
@@ -293,11 +315,21 @@ function listHtml(key, list, template, path, { showTitle = true } = {}) {
     <div class="se-list">
       <div class="se-list-head">
         ${showTitle ? `<span class="se-list-title">${esc(label(key))}</span>` : ''}
-        <span class="se-count">${list.length} ${esc(list.length === 1 ? name : `${name}s`)}</span>
+        <span class="se-count">${isPhotos && galleryFilter ? `${shown} of ` : ''}${list.length} ${esc(list.length === 1 ? name : `${name}s`)}</span>
         <div class="se-list-actions">
-          ${isObject && list.length > 1 ? `<button type="button" class="se-text-btn" data-expand-all="${esc(pk)}">${allOpen ? 'Collapse all' : 'Expand all'}</button>` : ''}
+          ${isObject && list.length > 1 && !isPhotos ? `<button type="button" class="se-text-btn" data-expand-all="${esc(pk)}">${allOpen ? 'Collapse all' : 'Expand all'}</button>` : ''}
         </div>
       </div>
+      ${isPhotos && cats.length > 1 ? `
+        <div class="se-filter" role="group" aria-label="Show photos by category">
+          <button type="button" class="se-chip${galleryFilter ? '' : ' is-on'}" data-gfilter="">All <b>${list.length}</b></button>
+          ${cats.map(([c, n]) => `<button type="button" class="se-chip${galleryFilter === c ? ' is-on' : ''}" data-gfilter="${esc(c)}">${esc(c)} <b>${n}</b></button>`).join('')}
+        </div>` : ''}
+      ${isPhotos && galleryFilter ? `
+        <div class="se-filter-bar">
+          <span>Showing <strong>${esc(galleryFilter)}</strong></span>
+          <button type="button" class="se-text-btn se-text-btn--muted" data-gremove="${esc(galleryFilter)}">${icon('Trash2')}<span>Remove all ${shown} photos in this category</span></button>
+        </div>` : ''}
       <div class="se-items">${rows || `<p class="se-empty">No ${esc(name)}s yet.</p>`}</div>
       <button type="button" class="se-add" data-add="${esc(pk)}">${icon('Plus')}<span>Add ${esc(name)}</span></button>
     </div>`;
@@ -326,13 +358,54 @@ function groupCard(group, data, template) {
     </section>`;
 }
 
+function bulkCard(data) {
+  const cats = photoCategories(data.items).filter(([c]) => c !== 'Uncategorised');
+  return `
+    <section class="se-card se-bulk" id="se-bulk">
+      <header class="se-card-head">
+        <h4>Add many photos at once</h4>
+        <p>Pick a category, then choose or drop up to ${BULK_MAX} photos. Each one is shrunk before it is sent (usually 100–300 KB, still sharp on a big screen) and they are published straight away.</p>
+      </header>
+      <div class="se-bulk-grid">
+        <div class="se-field">
+          <label class="se-label" for="se-bulk-cat">Category</label>
+          <input class="form-input" id="se-bulk-cat" list="se-bulk-cats" maxlength="60" placeholder="For example: Sports Day 2026" value="${esc(lastBulkCategory)}">
+          <datalist id="se-bulk-cats">${cats.map(([c]) => `<option value="${esc(c)}"></option>`).join('')}</datalist>
+          ${cats.length ? `<div class="se-bulk-cats">${cats.map(([c, n]) => `<button type="button" class="se-chip" data-bulkcat="${esc(c)}">${esc(c)} <b>${n}</b></button>`).join('')}</div>` : ''}
+          <small class="se-hint">Pick one above or type a new name — it becomes a filter on the Gallery page.</small>
+        </div>
+        <label class="se-drop${bulkBusy ? ' is-busy' : ''}" id="se-drop">
+          ${icon('ImagePlus')}
+          <strong>${bulkBusy ? 'Uploading…' : 'Choose photos'}</strong>
+          <span>or drag them here · JPG, PNG or WebP</span>
+          <input type="file" id="se-bulk-files" accept="image/jpeg,image/png,image/webp,image/*" multiple hidden${bulkBusy ? ' disabled' : ''}>
+        </label>
+      </div>
+      <div class="se-bulk-queue" id="se-bulk-queue" hidden></div>
+      ${bulkNote ? `<p class="se-bulk-note">${bulkNote}</p>` : ''}
+      <p class="se-hint se-bulk-usage" id="se-bulk-usage">${usageText()}</p>
+    </section>`;
+}
+
+const usageText = () => (mediaUse ? `All uploaded pictures on the website together use ${kb(mediaUse.bytes)} (${mediaUse.count} pictures). Photos you remove and save are deleted from storage.` : '');
+
+async function refreshUsage() {
+  try {
+    mediaUse = await api('media.usage');
+    const el = document.getElementById('se-bulk-usage');
+    if (el) el.textContent = usageText();
+  } catch { /* the figure is only a nicety */ }
+}
+
 function sectionBody(key, data) {
   const template = SITE_DEFAULTS[key];
   const groups = GROUPS[key] || [];
   const covered = new Set(groups.flatMap((g) => g.keys));
   const rest = Object.keys(template).filter((k) => !covered.has(k));
   const all = rest.length ? [...groups, { title: groups.length ? 'More' : 'Details', keys: rest }] : groups;
-  return all.map((g) => groupCard(g, data, template)).join('');
+  const cards = all.map((g) => groupCard(g, data, template));
+  if (key === 'gallery') cards.splice(1, 0, bulkCard(data));
+  return cards.join('');
 }
 
 // ── Page ──
@@ -390,6 +463,7 @@ function refreshDirty(container) {
 function loadSection(container, key, site) {
   current = { key, data: clone(site[key]), saved: JSON.stringify(site[key]) };
   expanded = new Set();
+  if (key === 'gallery') { galleryFilter = ''; bulkNote = ''; refreshUsage(); }
   // Short lists start open; long lists start folded so the page stays tidy.
   for (const [k, v] of Object.entries(current.data)) {
     if (Array.isArray(v) && v.length <= 2 && v.every((x) => typeof x === 'object')) v.forEach((_, i) => expanded.add(JSON.stringify([k, i])));
@@ -397,8 +471,22 @@ function loadSection(container, key, site) {
   renderPanel(container);
 }
 
-/** Shrink a photo in the browser before uploading (faster pages, smaller database). */
-export async function resizeImage(file, { maxSize, png }) {
+let webpOk;
+const canWebp = () => {
+  if (webpOk === undefined) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 2;
+    webpOk = c.toDataURL('image/webp', 0.8).startsWith('data:image/webp');
+  }
+  return webpOk;
+};
+
+/**
+ * Shrink a photo in the browser before uploading (faster pages, smaller database).
+ * Saves WebP where the browser can (about a third smaller than JPEG for the same look), else JPEG,
+ * lowering the quality step by step until it fits `maxBytes`.
+ */
+export async function resizeImage(file, { maxSize, png, maxBytes = 450_000 }) {
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(1, maxSize / Math.max(bitmap.width, bitmap.height));
   const canvas = document.createElement('canvas');
@@ -410,11 +498,14 @@ export async function resizeImage(file, { maxSize, png }) {
   ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   bitmap.close?.();
   if (png) return canvas.toDataURL('image/png');
-  for (const quality of [0.86, 0.78, 0.65]) {
-    const url = canvas.toDataURL('image/jpeg', quality);
-    if (url.length < 1_900_000) return url;
+  const type = canWebp() ? 'image/webp' : 'image/jpeg';
+  const limit = (maxBytes * 4) / 3; // base64 text is a third longer than the bytes
+  let url = '';
+  for (const quality of [0.82, 0.74, 0.66, 0.58, 0.5]) {
+    url = canvas.toDataURL(type, quality);
+    if (url.length <= limit) return url;
   }
-  return canvas.toDataURL('image/jpeg', 0.5);
+  return url.length < 1_900_000 ? url : canvas.toDataURL('image/jpeg', 0.45);
 }
 
 export async function renderWebsitePage(container, initialKey = 'general') {
@@ -447,13 +538,14 @@ export async function renderWebsitePage(container, initialKey = 'general') {
     btn.disabled = true;
     btn.textContent = 'Saving…';
     try {
-      const { data } = await api('site.update', { section: current.key, data: current.data });
+      const { data, freed } = await api('site.update', { section: current.key, data: current.data });
       site[current.key] = data;
       current.data = clone(data);
       current.saved = JSON.stringify(data);
       clearSiteCache();
       renderPanel(container);
-      showToast('Saved — the website is updated', 'success');
+      showToast(freed ? `Saved — ${freed} removed picture${freed === 1 ? '' : 's'} also deleted from storage` : 'Saved — the website is updated', 'success');
+      if (current.key === 'gallery') refreshUsage();
     } catch (err) {
       showToast(err.message || 'Could not save', 'error');
       btn.disabled = false;
@@ -464,6 +556,7 @@ export async function renderWebsitePage(container, initialKey = 'general') {
   container.querySelector('.se-rail').addEventListener('click', (e) => {
     const btn = e.target.closest('[data-section]');
     if (!btn || btn.dataset.section === current.key) return;
+    if (bulkBusy) { showToast('Please wait — photos are still uploading', 'info'); return; }
     if (isDirty() && !confirm('You have unsaved changes in this section. Leave without saving?')) return;
     loadSection(container, btn.dataset.section, site);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -484,7 +577,122 @@ export async function renderWebsitePage(container, initialKey = 'general') {
     }
   });
 
+  /** Bulk upload: shrink and send each photo (three at a time), then add them all to the gallery and publish. */
+  async function bulkUpload(fileList) {
+    if (bulkBusy || current.key !== 'gallery') return;
+    const catInput = panel.querySelector('#se-bulk-cat');
+    const category = catInput.value.trim().replace(/\s+/g, ' ');
+    if (!category) { showToast('Choose or type a category first', 'error'); catInput.focus(); return; }
+    let files = [...fileList].filter((f) => f.type.startsWith('image/') || /\.(jpe?g|png|webp|hei[cf])$/i.test(f.name));
+    if (!files.length) { showToast('Please choose photo files (JPG, PNG or WebP)', 'error'); return; }
+    const room = GALLERY_MAX - current.data.items.length;
+    if (room <= 0) { showToast(`The gallery is full (${GALLERY_MAX} photos) — remove some first`, 'error'); return; }
+    const limit = Math.min(BULK_MAX, room);
+    if (files.length > limit) {
+      showToast(`Only ${limit} photos can be added this time — the first ${limit} will be uploaded`, 'info');
+      files = files.slice(0, limit);
+    }
+
+    const target = current;
+    bulkBusy = true;
+    lastBulkCategory = category;
+    const drop = panel.querySelector('#se-drop');
+    drop.classList.add('is-busy');
+    drop.querySelector('strong').textContent = 'Uploading…';
+    const queue = panel.querySelector('#se-bulk-queue');
+    const previews = files.map((f) => URL.createObjectURL(f));
+    queue.hidden = false;
+    queue.innerHTML = `
+      <div class="se-bq-head"><strong id="se-bq-count">0 of ${files.length} done</strong><span id="se-bq-size"></span></div>
+      <div class="se-bq-bar"><i id="se-bq-bar"></i></div>
+      <div class="se-bq-list">${files.map((f, i) => `
+        <div class="se-bq" data-bq="${i}">
+          <img src="${previews[i]}" alt="" loading="lazy">
+          <span class="se-bq-name">${esc(f.name)}</span>
+          <span class="se-bq-state">Waiting</span>
+        </div>`).join('')}</div>`;
+    const row = (i, cls, text) => {
+      const r = queue.querySelector(`[data-bq="${i}"]`);
+      if (!r) return;
+      r.className = `se-bq ${cls}`;
+      r.querySelector('.se-bq-state').textContent = text;
+    };
+
+    const added = new Array(files.length);
+    const failed = [];
+    let before = 0;
+    let after = 0;
+    let finished = 0;
+    let next = 0;
+    const tick = () => {
+      finished += 1;
+      queue.querySelector('#se-bq-count').textContent = `${finished} of ${files.length} done`;
+      queue.querySelector('#se-bq-bar').style.width = `${(finished / files.length) * 100}%`;
+      if (after) queue.querySelector('#se-bq-size').textContent = `${kb(before)} shrunk to ${kb(after)}`;
+    };
+    const blank = blankLike(SITE_DEFAULTS.gallery.items[0]);
+    const worker = async () => {
+      while (next < files.length) {
+        const i = next++;
+        const file = files[i];
+        try {
+          row(i, 'is-busy', 'Shrinking…');
+          const dataUrl = await resizeImage(file, { maxSize: 1600, maxBytes: 320_000 }).catch(() => {
+            throw new Error(/hei[cf]$/i.test(file.name) ? 'iPhone HEIC photo — please send it as JPG' : 'Could not read this photo');
+          });
+          row(i, 'is-busy', 'Uploading…');
+          const { url } = await api('media.upload', { data_url: dataUrl });
+          const size = Math.round((dataUrl.length - dataUrl.indexOf(',') - 1) * 0.75);
+          before += file.size;
+          after += size;
+          added[i] = { ...blank, image: url, category };
+          row(i, 'is-done', `${kb(file.size)} → ${kb(size)}`);
+        } catch (err) {
+          failed.push(file.name);
+          row(i, 'is-failed', err.message || 'Upload failed');
+        }
+        tick();
+      }
+    };
+    await Promise.all([worker(), worker(), worker()]);
+    previews.forEach((u) => setTimeout(() => URL.revokeObjectURL(u), 60_000));
+
+    const photos = added.filter(Boolean);
+    bulkBusy = false;
+    if (photos.length) {
+      target.data.items = [...photos, ...target.data.items]; // newest first
+      galleryFilter = category;
+      bulkNote = `${icon('Check')} Added <strong>${photos.length} photo${photos.length === 1 ? '' : 's'}</strong> to “${esc(category)}” — ${kb(before)} shrunk to ${kb(after)}.`
+        + (failed.length ? ` <span class="se-bulk-fail">${failed.length} could not be added: ${esc(failed.slice(0, 5).join(', '))}${failed.length > 5 ? '…' : ''}</span>` : '');
+      if (current === target) await save();
+    } else {
+      bulkNote = `<span class="se-bulk-fail">No photos were added. ${esc(failed.slice(0, 5).join(', '))}</span>`;
+      if (current === target) renderPanel(container);
+    }
+  }
+
+  panel.addEventListener('dragover', (e) => {
+    const drop = e.target.closest('#se-drop');
+    if (!drop) return;
+    e.preventDefault();
+    drop.classList.add('is-over');
+  });
+  panel.addEventListener('dragleave', (e) => { e.target.closest('#se-drop')?.classList.remove('is-over'); });
+  panel.addEventListener('drop', (e) => {
+    const drop = e.target.closest('#se-drop');
+    if (!drop) return;
+    e.preventDefault();
+    drop.classList.remove('is-over');
+    bulkUpload(e.dataTransfer?.files || []);
+  });
+
   panel.addEventListener('change', async (e) => {
+    if (e.target.id === 'se-bulk-files') {
+      const files = [...e.target.files];
+      e.target.value = '';
+      bulkUpload(files);
+      return;
+    }
     if (e.target.type === 'radio') { e.target.dispatchEvent(new Event('input', { bubbles: true })); return; }
     const input = e.target.closest('[data-upload]');
     if (!input?.files?.[0]) return;
@@ -496,7 +704,8 @@ export async function renderWebsitePage(container, initialKey = 'general') {
     try {
       const file = input.files[0];
       const dataUrl = await resizeImage(file, {
-        maxSize: SMALL_PHOTO_KEYS.has(key) ? 900 : 2000,
+        maxSize: SMALL_PHOTO_KEYS.has(key) ? 900 : 1920,
+        maxBytes: SMALL_PHOTO_KEYS.has(key) ? 200_000 : current.key === 'gallery' ? 350_000 : 450_000,
         png: key === 'crest_url' && file.type === 'image/png',
       });
       const { url } = await api('media.upload', { data_url: dataUrl });
@@ -526,6 +735,28 @@ export async function renderWebsitePage(container, initialKey = 'general') {
       const allOpen = keys.every((k) => expanded.has(k));
       keys.forEach((k) => (allOpen ? expanded.delete(k) : expanded.add(k)));
       renderPanel(container);
+      return;
+    }
+    if (t.dataset.gfilter !== undefined) {
+      galleryFilter = t.dataset.gfilter;
+      expanded = new Set();
+      renderPanel(container);
+      return;
+    }
+    if (t.dataset.bulkcat !== undefined) {
+      panel.querySelector('#se-bulk-cat').value = t.dataset.bulkcat;
+      lastBulkCategory = t.dataset.bulkcat;
+      return;
+    }
+    if (t.dataset.gremove !== undefined) {
+      const cat = t.dataset.gremove;
+      const n = current.data.items.filter((x) => categoryOfPhoto(x) === cat).length;
+      if (!confirm(`Remove all ${n} photos in "${cat}"? Press Save changes afterwards to take them off the website and free their storage.`)) return;
+      current.data.items = current.data.items.filter((x) => categoryOfPhoto(x) !== cat);
+      galleryFilter = '';
+      expanded = new Set();
+      renderPanel(container);
+      showToast(`${n} photos removed — press Save changes to publish`, 'info');
       return;
     }
     if (t.dataset.clear) {
@@ -594,7 +825,7 @@ export async function renderWebsitePage(container, initialKey = 'general') {
 
 /** Ask before leaving the admin page with unsaved website edits. */
 export function hasUnsavedWebsiteChanges() {
-  return isDirty();
+  return isDirty() || bulkBusy;
 }
 
 export function forgetWebsiteEditor() {

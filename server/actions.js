@@ -5,7 +5,7 @@
 import crypto from 'node:crypto';
 import { HttpError, toClient } from './db.js';
 import { getSiteContent, saveSection, resetSection } from './site-content.js';
-import { storeImage } from './media.js';
+import { storeImage, mediaIdsIn, pruneMedia, mediaUsage } from './media.js';
 import { CATEGORY_NAMES, GENERAL_CATEGORY, FORMATS } from '../shared/categories.js';
 import { normalizeSlideshow } from '../shared/slideshow.js';
 import {
@@ -431,14 +431,22 @@ export const actions = {
   'site.update': {
     admin: true,
     async run(db, params) {
-      return { section: params.section, data: await saveSection(db, params.section, params.data) };
+      const before = await db.collection('site_content').findOne({ _id: params.section });
+      const data = await saveSection(db, params.section, params.data);
+      // Photos taken out of this section are deleted from storage once nothing else uses them.
+      const kept = mediaIdsIn(data);
+      const freed = await pruneMedia(db, [...mediaIdsIn(before?.data)].filter((id) => !kept.has(id)));
+      return { section: params.section, data, freed };
     },
   },
 
   'site.reset': {
     admin: true,
     async run(db, params) {
-      return { section: params.section, data: await resetSection(db, params.section) };
+      const before = await db.collection('site_content').findOne({ _id: params.section });
+      const data = await resetSection(db, params.section);
+      const freed = await pruneMedia(db, mediaIdsIn(before?.data));
+      return { section: params.section, data, freed };
     },
   },
 
@@ -446,6 +454,13 @@ export const actions = {
     admin: true,
     async run(db, params) {
       return storeImage(db, params.data_url);
+    },
+  },
+
+  'media.usage': {
+    admin: true,
+    async run(db) {
+      return mediaUsage(db);
     },
   },
 
