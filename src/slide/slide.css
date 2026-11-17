@@ -85,6 +85,9 @@ body.is-idle, body.is-idle * { cursor: none !important; }
 /* ── Background images ── */
 .sx-bg { position: absolute; inset: -4%; background-size: cover; background-position: center; }
 .sx-kenburns { animation: kenburns 28s ease-in-out infinite alternate; }
+/* A photo fades in once it has downloaded instead of popping in half-drawn. */
+.sx-pic { opacity: 0; transition: opacity 1.2s ease; }
+.sx-pic.is-ready { opacity: 1; }
 @keyframes kenburns { from { transform: scale(1.02) translate(0, 0); } to { transform: scale(1.14) translate(-2%, -1.5%); } }
 .sx-shade { position: absolute; inset: 0; }
 .sx-shade--left { background: linear-gradient(90deg, rgba(6, 10, 34, 0.94) 0%, rgba(6, 10, 34, 0.72) 42%, rgba(6, 10, 34, 0.15) 75%), linear-gradient(to top, rgba(6, 10, 34, 0.9), transparent 40%); }
@@ -246,7 +249,7 @@ body.is-idle, body.is-idle * { cursor: none !important; }
 /* ── Campus life ── */
 .sx-slide--gallery { padding: 0; }
 .sx-mosaic { position: absolute; inset: 0; display: grid; grid-template-columns: 1.4fr 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 10px; }
-.sx-tile { position: relative; overflow: hidden; }
+.sx-tile { position: relative; overflow: hidden; background: radial-gradient(circle at 30% 20%, #1d2c6e, #0b1236 70%); }
 .sx-tile--1 { grid-row: 1 / 3; }
 .sx-tile--4 { grid-column: 2 / 4; }
 .sx-tile > div { position: absolute; inset: -6%; background-size: cover; background-position: center; }

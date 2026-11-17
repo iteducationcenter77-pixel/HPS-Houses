@@ -84,6 +84,50 @@ function countdownWidget(slide) {
     </div>`;
 }
 
+// ── Pictures ──
+// Photos are downloaded ahead of time and kept in memory, so a slide never opens on an empty frame —
+// even when the screen's internet is slow. A photo that fails to load is tried again later.
+
+const pictures = new Map(); // url → { img, ok, failed, at, promise }
+const RETRY_AFTER = 15_000;
+const isReady = (url) => !!pictures.get(url)?.ok;
+const heroUrl = () => imageUrl(state.site.hero?.image) || '/images/site/hero-building.jpg';
+const galleryUrls = () => (state.site.gallery?.items || []).map((x) => imageUrl(x.image)).filter(Boolean);
+
+function fetchPicture(url, high = false) {
+  if (!url) return Promise.resolve();
+  const have = pictures.get(url);
+  if (have && (have.ok || !have.failed || Date.now() - have.at < RETRY_AFTER)) return have.promise;
+  const p = { img: new Image(), ok: false, failed: false, at: Date.now() };
+  p.promise = new Promise((resolve) => {
+    p.img.decoding = 'async';
+    if (high) p.img.fetchPriority = 'high';
+    p.img.onload = () => Promise.resolve(p.img.decode?.()).catch(() => {}).then(() => { p.ok = true; paintPictures(); resolve(); });
+    p.img.onerror = () => { p.failed = true; p.at = Date.now(); resolve(); };
+  });
+  pictures.set(url, p);
+  p.img.src = url;
+  return p.promise;
+}
+
+function preloadPictures() {
+  fetchPicture(heroUrl(), true);
+  galleryUrls().forEach((u) => fetchPicture(u));
+}
+
+/** Shows photos on screen that have finished loading, and asks again for any that have not. */
+function paintPictures() {
+  document.querySelectorAll('[data-pic]:not(.is-ready)').forEach((el) => {
+    if (isReady(el.dataset.pic)) el.classList.add('is-ready');
+    else fetchPicture(el.dataset.pic);
+  });
+}
+
+const picture = (url, cls) =>
+  `<div class="${cls} sx-pic${isReady(url) ? ' is-ready' : ''}" data-pic="${esc(url)}" style="background-image:url('${esc(url)}')"></div>`;
+
+const shuffle = (list) => [...list].sort(() => Math.random() - 0.5);
+
 // ── Slides ──
 
 const RENDER = {
@@ -93,7 +137,7 @@ const RENDER = {
     const hour = new Date().getHours();
     const greet = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
     return `
-      <div class="sx-bg sx-kenburns" style="background-image:url('${esc(imageUrl(hero.image) || '/images/site/hero-building.jpg')}')"></div>
+      ${picture(heroUrl(), 'sx-bg sx-kenburns')}
       <div class="sx-shade sx-shade--left"></div>
       <div class="sx-welcome">
         <p class="sx-kicker" data-in><i></i>${esc(greet)} · Welcome to</p>
@@ -299,13 +343,14 @@ const RENDER = {
 
   gallery() {
     const items = (state.site.gallery?.items || []).filter((x) => x.image);
-    const pick = [...items].sort(() => Math.random() - 0.5).slice(0, 4);
+    // Photos already downloaded come first, so the mosaic opens full.
+    const pick = [...shuffle(items.filter((x) => isReady(imageUrl(x.image)))), ...shuffle(items.filter((x) => !isReady(imageUrl(x.image))))].slice(0, 4);
     const g = state.site.gallery || {};
     return `
       <div class="sx-mosaic">
         ${pick.map((x, i) => `
           <figure class="sx-tile sx-tile--${i + 1}" data-in>
-            <div class="sx-kenburns" style="background-image:url('${esc(imageUrl(x.image))}')"></div>
+            ${picture(imageUrl(x.image), 'sx-kenburns')}
             ${x.title ? `<figcaption>${esc(x.title)}</figcaption>` : ''}
           </figure>`).join('')}
       </div>
@@ -409,6 +454,7 @@ async function loadData() {
   if (dash.status === 'fulfilled') state.dash = dash.value;
   stage.classList.toggle('is-offline', dash.status !== 'fulfilled');
   applyChrome();
+  preloadPictures();
 }
 
 async function loadSettings() {
@@ -555,6 +601,7 @@ function show(index) {
   const to = makeSlide(slide);
   slidesEl.appendChild(to);
   state.el = to;
+  paintPictures();
   $('sx-current').textContent = typeOf(slide.key)?.name || '';
   state.busy = true;
   const { tl, delay } = transition(from, to);
@@ -759,7 +806,10 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
   setInterval(tickClock, 1000);
   await Promise.all([loadData(), loadSettings()]);
   buildSequence();
+  // Give the first photos a moment to arrive so the screen does not open on an empty frame.
+  await Promise.race([Promise.all([fetchPicture(heroUrl(), true), ...galleryUrls().slice(0, 4).map((u) => fetchPicture(u))]), new Promise((r) => setTimeout(r, 5000))]);
   show(0);
+  setInterval(() => { preloadPictures(); paintPictures(); }, RETRY_AFTER);
   keepAwake();
   setInterval(countdownTick, 250);
 
