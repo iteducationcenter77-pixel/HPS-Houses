@@ -502,3 +502,50 @@ select.res-pos { padding: 8px 26px 8px 12px; border: 0; border-radius: 20px; fon
 }
 .students-alert--info { background: rgba(52, 152, 219, 0.1); border-color: rgba(52, 152, 219, 0.35); color: #aed6f1; }
 .students-alert--info em { color: #fff; font-style: normal; font-weight: 600; }
+
+/* ── Results: General (house competition) section ── */
+.res-section--general { border-color: rgba(240, 194, 68, 0.35); background: rgba(240, 194, 68, 0.04); }
+.res-face--house { border-radius: 10px; box-shadow: inset 0 0 0 2px var(--hc); object-fit: contain; background: color-mix(in srgb, var(--hc) 14%, transparent); }
+
+/* ── Bonus & Penalty page ── */
+.pts-lead { max-width: 760px; margin-bottom: var(--space-lg); color: var(--text-muted); font-size: var(--font-sm); line-height: 1.6; }
+.pts-lead strong { color: var(--text-secondary); }
+.pts-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: var(--space-md); margin-bottom: var(--space-lg); }
+.pts-house { position: relative; overflow: hidden; padding: 16px 18px; border-radius: var(--radius-lg); background: var(--primary-light); border: 1px solid var(--border); }
+.pts-house::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--hc); }
+.pts-house-name { display: flex; align-items: center; gap: 8px; color: var(--white); font-weight: 700; }
+.pts-house-name i, .pts-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--hc); display: inline-block; flex: none; }
+.pts-dot { margin-right: 8px; }
+.pts-house-total { margin: 6px 0 10px; color: var(--white); font-size: 28px; font-weight: 800; line-height: 1; }
+.pts-house-total small { margin-left: 6px; color: var(--text-muted); font-size: 12px; font-weight: 600; }
+.pts-house-parts { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--text-muted); font-size: 12px; }
+.pts-house-parts b { color: var(--text-secondary); }
+.pts-house-parts .is-bonus b { color: #7ddba3; }
+.pts-house-parts .is-penalty b { color: #f1948a; }
+.pts-grid { display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); gap: var(--space-lg); align-items: start; }
+@media (max-width: 1000px) { .pts-grid { grid-template-columns: minmax(0, 1fr); } }
+.pts-form { padding: 20px; border-radius: var(--radius-lg); background: var(--primary-light); border: 1px solid var(--border); border-top: 3px solid var(--success); }
+.pts-form.is-penalty { border-top-color: var(--danger); }
+.pts-form h3 { margin-bottom: 14px; color: var(--white); font-size: var(--font-md); }
+.pts-type { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 16px; padding: 4px; border-radius: var(--radius-md); background: var(--primary); }
+.pts-type label { cursor: pointer; }
+.pts-type input { position: absolute; opacity: 0; pointer-events: none; }
+.pts-type span { display: block; padding: 9px; border-radius: 8px; text-align: center; color: var(--text-muted); font-weight: 700; font-size: var(--font-sm); }
+.pts-type input:checked + span { background: rgba(46, 204, 113, 0.16); color: #7ddba3; }
+.pts-type input[value="penalty"]:checked + span { background: rgba(231, 76, 60, 0.16); color: #f1948a; }
+.pts-type input:focus-visible + span { outline: 2px solid var(--accent); }
+.pts-houses { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.pts-house-pick { cursor: pointer; }
+.pts-house-pick input { position: absolute; opacity: 0; pointer-events: none; }
+.pts-house-pick span { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: var(--radius-md); background: var(--primary); border: 1px solid var(--border); color: var(--text-secondary); font-weight: 600; font-size: var(--font-sm); }
+.pts-house-pick span i { width: 10px; height: 10px; border-radius: 50%; background: var(--hc); }
+.pts-house-pick input:checked + span { border-color: var(--hc); background: color-mix(in srgb, var(--hc) 16%, var(--primary)); color: var(--white); }
+.pts-house-pick input:focus-visible + span { outline: 2px solid var(--accent); }
+.pts-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-md); }
+.pts-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.pts-chip { padding: 5px 10px; border-radius: 20px; background: var(--primary); border: 1px solid var(--border); color: var(--text-muted); font-size: 12px; cursor: pointer; }
+.pts-chip:hover { border-color: var(--accent); color: var(--accent); }
+.pts-count { color: var(--text-muted); font-size: var(--font-sm); }
+.pts-badge { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 800; white-space: nowrap; }
+.pts-badge.is-bonus { background: rgba(46, 204, 113, 0.14); color: #7ddba3; }
+.pts-badge.is-penalty { background: rgba(231, 76, 60, 0.14); color: #f1948a; }

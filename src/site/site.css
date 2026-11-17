@@ -958,3 +958,40 @@ body.menu-open .site-head .menu-btn { border-color: rgba(255, 255, 255, 0.35); }
 .hz-cat strong { color: var(--royal); font-size: 0.78rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
 .hz-cat span { color: var(--muted); font-size: 0.78rem; }
 .hz-cat + .hz-podium .hz-place:first-child { border-top: 0; }
+
+/* General (house competition) column and whole-house entries */
+.hz-cats--1 { grid-template-columns: minmax(0, 620px); }
+.hz-cats--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.hz-cat--general { background: rgba(212, 169, 48, 0.12); }
+.hz-cat--general strong { color: var(--gold-600); }
+.hz-avatar--house { border-radius: 12px; }
+.hz-avatar--house img { object-fit: contain; padding: 4px; background: #fff; }
+
+/* Bonus & penalty on the standings cards */
+.hz-adj { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; font-size: 0.78rem; font-weight: 600; }
+.hz-adj span { padding: 3px 9px; border-radius: 999px; }
+.hz-adj .is-bonus { background: rgba(46, 204, 113, 0.16); color: #7ddba3; }
+.hz-adj .is-penalty { background: rgba(231, 76, 60, 0.16); color: #f5a49b; }
+
+/* Bonus & penalty section */
+.hz-adj-totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 22px; }
+.hz-adj-totals li { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-radius: var(--r-md); background: #fff; border: 1px solid var(--line); border-left: 4px solid var(--hc); }
+.hz-adj-house { flex: 1; display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.hz-adj-house i { width: 9px; height: 9px; border-radius: 50%; background: var(--hc); }
+.hz-adj-totals .is-bonus { color: #1e8a4c; font-size: 0.85rem; font-weight: 600; }
+.hz-adj-totals .is-penalty { color: #c0392b; font-size: 0.85rem; font-weight: 600; }
+.hz-adj-totals strong { min-width: 48px; text-align: right; font-family: var(--f-display); font-size: 1.25rem; }
+.hz-adj-list { display: flex; flex-direction: column; gap: 8px; }
+.hz-adj-item { display: flex; align-items: center; gap: 16px; padding: 14px 18px; border-radius: var(--r-md); background: #fff; border: 1px solid var(--line); }
+.hz-adj-pts { min-width: 56px; padding: 6px 10px; border-radius: 999px; text-align: center; font-weight: 800; }
+.hz-adj-item.is-bonus .hz-adj-pts { background: rgba(46, 204, 113, 0.14); color: #1e8a4c; }
+.hz-adj-item.is-penalty .hz-adj-pts { background: rgba(231, 76, 60, 0.12); color: #c0392b; }
+.hz-adj-what { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.hz-adj-what strong { font-weight: 600; }
+.hz-adj-what small { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 0.8rem; }
+.hz-adj-what small i { width: 8px; height: 8px; border-radius: 50%; background: var(--hc); }
+.hz-adj-item time { color: var(--muted); font-size: 0.82rem; white-space: nowrap; }
+@media (max-width: 560px) {
+  .hz-adj-item { flex-wrap: wrap; gap: 6px 12px; padding: 12px 14px; }
+  .hz-adj-item time { order: 3; width: 100%; padding-left: 68px; }
+}

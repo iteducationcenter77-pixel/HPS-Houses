@@ -409,7 +409,7 @@ try {
       ['Sub Junior', 'Sub Junior', 'Junior', 'Junior', 'Senior', 'Senior', 'Senior', '', '', '']);
     assert.equal(inCategory('Class IX', 'Senior'), true);
     assert.equal(inCategory('Class IX', 'Junior'), false);
-    assert.equal(inCategory('Nursery', 'Open'), true);
+    assert.equal(inCategory('Nursery', 'General'), true);
 
     // One competition for everyone; results are entered 1st/2nd/3rd per category.
     const add = async (name, cls, roll) => (await call('students.add', { student: { name, class: cls, roll_number: roll, house_id: orion.id } })).data;
@@ -448,6 +448,55 @@ try {
     assert.equal(JSON.stringify(archive.data).includes('contact_number'), false, 'no contact numbers in the archive');
     await call('competitions.delete', { id: c.id });
     for (const s of [...sj, ...jr, sr]) await call('students.delete', { id: s.id });
+  });
+
+  await step('General (house) competitions: whole houses win places; bonus and penalty points count', async () => {
+    const pointsOf = async () => Object.fromEntries((await call('houses.list', {}, { auth: false })).data.map((h) => [h.name, h.total_points]));
+    const solo = (await call('students.add', { student: { name: 'Choir Solo', class: '1', roll_number: 93, house_id: orion.id } })).data;
+    const c = (await call('competitions.add', { competition: { name: 'House Choir', type: 'Cultural', format: 'general', competition_date: '2026-11-04' } })).data;
+    assert.equal(c.format, 'general');
+    await call('results.save', { competition_id: c.id, results: [] }); // recalculates every house total
+    const before = await pointsOf();
+    assert.equal((await call('competitions.add', { competition: { name: 'Bad', format: 'mixed', competition_date: '2026-11-04' } })).status, 400);
+    // a whole house only fits the General category, and only once
+    assert.equal((await call('results.save', { competition_id: c.id, results: [{ house_entry: true, house_id: orion.id, category: 'Junior', position: 1, points_earned: 10 }] })).status, 400);
+    assert.equal((await call('results.save', { competition_id: c.id, results: [
+      { house_entry: true, house_id: orion.id, category: 'General', position: 1, points_earned: 10 },
+      { house_entry: true, house_id: orion.id, category: 'General', position: 2, points_earned: 7 },
+    ] })).status, 400);
+    const saved = await call('results.save', { competition_id: c.id, results: [
+      { house_entry: true, house_id: titans.id, category: 'General', position: 1, points_earned: 20 },
+      { house_entry: true, house_id: orion.id, category: 'General', position: 2, points_earned: 15 },
+      { student_id: solo.id, category: 'General', position: 3, points_earned: 5 },
+    ] });
+    assert.equal(saved.status, 200, JSON.stringify(saved));
+    const winners = (await call('dashboard.get', {}, { auth: false })).data.results.find((r) => r.id === c.id).winners;
+    assert.deepEqual(winners.map((w) => [w.category, w.position, w.name, Boolean(w.house_entry)]), [
+      ['General', 1, 'Titans', true], ['General', 2, 'Orion', true], ['General', 3, 'Choir Solo', false],
+    ]);
+    let now = await pointsOf();
+    assert.equal(now.Titans - before.Titans, 20);
+    assert.equal(now.Orion - before.Orion, 20, `15 for the house place + 5 for its student: ${JSON.stringify({ before, now })}`);
+
+    // bonus and penalty points
+    assert.equal((await call('points.add', { adjustment: { house_id: orion.id, points: 5, reason: 'Discipline', date: '2026-11-05' } }, { auth: false })).status, 401);
+    assert.equal((await call('points.add', { adjustment: { house_id: orion.id, points: 0, reason: 'x', date: '2026-11-05' } })).status, 400);
+    assert.equal((await call('points.add', { adjustment: { house_id: orion.id, points: 5, reason: '', date: '2026-11-05' } })).status, 400);
+    const bonus = await call('points.add', { adjustment: { house_id: orion.id, points: 5, reason: 'Discipline in assembly', date: '2026-11-05' } });
+    const penalty = await call('points.add', { adjustment: { house_id: titans.id, points: -3, reason: 'Late coming', date: '2026-11-06' } });
+    assert.equal(bonus.status, 200);
+    now = await pointsOf();
+    assert.equal(now.Orion - before.Orion, 25);
+    assert.equal(now.Titans - before.Titans, 17);
+    const pub = (await call('dashboard.get', {}, { auth: false })).data.adjustments;
+    assert.deepEqual(pub.slice(0, 2).map((a) => [a.house, a.points, a.reason]), [['Titans', -3, 'Late coming'], ['Orion', 5, 'Discipline in assembly']]);
+    assert.equal((await call('points.list', {}, { auth: false })).data.length, pub.length);
+
+    await call('points.delete', { id: bonus.data.id });
+    await call('points.delete', { id: penalty.data.id });
+    await call('competitions.delete', { id: c.id });
+    await call('students.delete', { id: solo.id });
+    assert.deepEqual(await pointsOf(), before, 'totals back where they were');
   });
 
   await step('page banners: editable, unsafe links refused', async () => {

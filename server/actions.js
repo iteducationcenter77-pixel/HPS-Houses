@@ -6,7 +6,7 @@ import crypto from 'node:crypto';
 import { HttpError, toClient } from './db.js';
 import { getSiteContent, saveSection, resetSection } from './site-content.js';
 import { storeImage } from './media.js';
-import { CATEGORY_NAMES } from '../shared/categories.js';
+import { CATEGORY_NAMES, GENERAL_CATEGORY, FORMATS } from '../shared/categories.js';
 import {
   verifyPassword, setAdminPassword, getAdminAuth, isAdminRequest,
   sessionCookie, clearedCookie, clientIp, assertLoginAllowed, recordFailedLogin,
@@ -104,6 +104,11 @@ function competitionFields(p, { partial = false } = {}) {
     out.status = status;
   }
   if (has('description')) out.description = text(p.description, 'Description', { max: 5000 });
+  if (has('format')) {
+    const format = p.format || 'class';
+    if (!FORMATS.includes(format)) throw new HttpError(400, 'Result format is invalid');
+    out.format = format;
+  }
   if (has('category')) {
     const category = text(p.category, 'Category', { max: 30 });
     if (category && !CATEGORY_NAMES.includes(category)) throw new HttpError(400, `Category must be one of: ${CATEGORY_NAMES.join(', ')}`);
@@ -119,10 +124,12 @@ async function assertHouseExists(db, houseId) {
 }
 
 async function recalculateHousePoints(db) {
-  const sums = await db.collection('participation')
-    .aggregate([{ $group: { _id: '$house_id', total: { $sum: '$points_earned' } } }])
-    .toArray();
+  const [sums, adjustments] = await Promise.all([
+    db.collection('participation').aggregate([{ $group: { _id: '$house_id', total: { $sum: '$points_earned' } } }]).toArray(),
+    db.collection('point_adjustments').aggregate([{ $group: { _id: '$house_id', total: { $sum: '$points' } } }]).toArray(),
+  ]);
   const totals = new Map(sums.map((s) => [s._id, s.total]));
+  for (const a of adjustments) totals.set(a._id, (totals.get(a._id) || 0) + a.total);
   const houses = await db.collection('houses').find({}, { projection: { _id: 1 } }).toArray();
   const updated_at = now();
   await Promise.all(houses.map((h) =>
@@ -139,7 +146,7 @@ async function withWinners(db, comps, housesById) {
   const entries = await db.collection('participation')
     .find({ competition_id: { $in: comps.map((c) => c._id) } }).toArray();
   const students = await db.collection('students')
-    .find({ _id: { $in: [...new Set(entries.map((e) => e.student_id))] } }, { projection: { name: 1, class: 1, photo_url: 1, chest_number: 1 } })
+    .find({ _id: { $in: [...new Set(entries.filter((e) => !e.house_entry).map((e) => e.student_id))] } }, { projection: { name: 1, class: 1, photo_url: 1, chest_number: 1 } })
     .toArray();
   const studentsById = new Map(students.map((s) => [s._id, s]));
 
@@ -159,6 +166,10 @@ async function withWinners(db, comps, housesById) {
     return {
       ...toClient(comp),
       winners: top.map((e) => {
+        const house = housesById.get(e.house_id)?.name || '';
+        if (e.house_entry) {
+          return { name: house || 'House', house, house_entry: true, class: '', position: e.position, category: e.category || '', points: e.points_earned, photo_url: '', chest_number: '' };
+        }
         const s = studentsById.get(e.student_id);
         return {
           name: s?.name || 'Unknown',
@@ -194,7 +205,14 @@ export const actions = {
       const upcoming = await db.collection('competitions')
         .find({ status: { $in: ['upcoming', 'ongoing'] } }).sort({ competition_date: 1 }).limit(5).toArray();
 
-      return { houses: houses.map(toClient), results, upcoming: upcoming.map(toClient) };
+      const adjustments = await db.collection('point_adjustments').find().sort({ date: -1, created_at: -1 }).limit(500).toArray();
+
+      return {
+        houses: houses.map(toClient),
+        results,
+        upcoming: upcoming.map(toClient),
+        adjustments: adjustments.map((a) => ({ ...toClient(a), house: housesById.get(a.house_id)?.name || '' })),
+      };
     },
   },
 
@@ -206,6 +224,51 @@ export const actions = {
         .find({ status: 'completed' }, { projection: { name: 1, type: 1, competition_date: 1, description: 1, created_at: 1 } })
         .sort({ competition_date: -1, created_at: -1 }).limit(500).toArray();
       return withWinners(db, completed, new Map(houses.map((h) => [h._id, h])));
+    },
+  },
+
+  // Bonus (+) and penalty (−) points given straight to a house, e.g. for discipline. Newest first.
+  'points.list': {
+    async run(db) {
+      const [list, houses] = await Promise.all([
+        db.collection('point_adjustments').find().sort({ date: -1, created_at: -1 }).limit(500).toArray(),
+        houseMap(db),
+      ]);
+      return list.map((a) => ({ ...toClient(a), houses: houseRef(houses.get(a.house_id)) }));
+    },
+  },
+
+  'points.add': {
+    admin: true,
+    async run(db, params) {
+      const p = params.adjustment || {};
+      const houseId = id(p.house_id, 'House');
+      await assertHouseExists(db, houseId);
+      const points = int(p.points, 'Points', { required: true });
+      if (points === 0 || Math.abs(points) > 1000) throw new HttpError(400, 'Points must be between -1000 and 1000, and not 0');
+      const date = text(p.date, 'Date', { max: 10, required: true });
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date))) throw new HttpError(400, 'Date is invalid');
+      const doc = {
+        _id: crypto.randomUUID(),
+        house_id: houseId,
+        points,
+        reason: text(p.reason, 'Reason', { max: 200, required: true }),
+        date,
+        created_at: now(),
+      };
+      await db.collection('point_adjustments').insertOne(doc);
+      await recalculateHousePoints(db);
+      return toClient(doc);
+    },
+  },
+
+  'points.delete': {
+    admin: true,
+    async run(db, params) {
+      const res = await db.collection('point_adjustments').deleteOne({ _id: id(params.id) });
+      if (!res.deletedCount) throw new HttpError(404, 'Entry not found');
+      await recalculateHousePoints(db);
+      return { deleted: true };
     },
   },
 
@@ -621,6 +684,7 @@ export const actions = {
       await db.collection('participation').deleteMany({ competition_id: compId });
       const res = await db.collection('competitions').deleteOne({ _id: compId });
       if (!res.deletedCount) throw new HttpError(404, 'Competition not found');
+      await recalculateHousePoints(db); // its points leave the house totals with it
       return { deleted: true };
     },
   },
@@ -635,7 +699,7 @@ export const actions = {
       ]);
       const studentsById = new Map(students.map((s) => [s._id, s]));
       return entries.sort(byPosition).map((e) => {
-        const s = studentsById.get(e.student_id);
+        const s = e.house_entry ? null : studentsById.get(e.student_id);
         return {
           ...toClient(e),
           students: s ? { name: s.name, class: s.class, photo_url: s.photo_url ?? null, chest_number: s.chest_number ?? null } : null,
@@ -656,24 +720,38 @@ export const actions = {
       if (!Array.isArray(params.results) || params.results.length > 2000) throw new HttpError(400, 'Results are invalid');
 
       // Validate everything before touching the stored results.
-      const studentIds = params.results.map((r) => id(r?.student_id, 'Student'));
+      // A row is either a student, or (General only) a whole house: { house_entry: true, house_id }.
+      const houseRows = params.results.filter((r) => r?.house_entry);
+      const studentIds = params.results.filter((r) => !r?.house_entry).map((r) => id(r?.student_id, 'Student'));
       if (new Set(studentIds).size !== studentIds.length) {
         throw new HttpError(400, 'The same student is listed more than once');
       }
-      const students = await db.collection('students')
-        .find({ _id: { $in: studentIds } }, { projection: { house_id: 1 } }).toArray();
+      const houseIds = houseRows.map((r) => id(r.house_id, 'House'));
+      if (new Set(houseIds).size !== houseIds.length) throw new HttpError(400, 'The same house is listed more than once');
+      const [students, houses] = await Promise.all([
+        db.collection('students').find({ _id: { $in: studentIds } }, { projection: { house_id: 1 } }).toArray(),
+        houseMap(db),
+      ]);
       const studentsById = new Map(students.map((s) => [s._id, s]));
 
       const docs = params.results.map((r) => {
-        const student = studentsById.get(r.student_id);
-        if (!student) throw new HttpError(400, 'One of the selected students no longer exists');
         const category = text(r.category, 'Category', { max: 30 }) || '';
         if (category && !CATEGORY_NAMES.includes(category)) throw new HttpError(400, `Category must be one of: ${CATEGORY_NAMES.join(', ')}`);
+        let entry;
+        if (r.house_entry) {
+          if (category !== GENERAL_CATEGORY) throw new HttpError(400, 'A whole house can only be placed in the General category');
+          if (!houses.has(r.house_id)) throw new HttpError(400, 'One of the selected houses no longer exists');
+          // student_id stays unique per competition (database index), so a house entry gets its own key.
+          entry = { student_id: `house:${r.house_id}`, house_id: r.house_id, house_entry: true };
+        } else {
+          const student = studentsById.get(r.student_id);
+          if (!student) throw new HttpError(400, 'One of the selected students no longer exists');
+          entry = { student_id: r.student_id, house_id: student.house_id };
+        }
         return {
           _id: crypto.randomUUID(),
           competition_id: compId,
-          student_id: r.student_id,
-          house_id: student.house_id,
+          ...entry,
           category,
           position: int(r.position, 'Position', { min: 1 }),
           points_earned: int(r.points_earned, 'Points', { min: 0, fallback: 0 }),

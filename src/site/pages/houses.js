@@ -5,7 +5,7 @@
 import { api } from '../../js/api.js';
 import { banner } from '../layout.js';
 import { esc, img, icon, sectionHead, imageUrl, initials, formatDate, pad2 } from '../util.js';
-import { CATEGORIES, OPEN_CATEGORY } from '../../../shared/categories.js';
+import { CATEGORIES, GENERAL_CATEGORY, GENERAL_LABEL } from '../../../shared/categories.js';
 
 // Start loading the live data while the page frame is prepared.
 const dataPromise = api('dashboard.get').catch(() => null);
@@ -14,7 +14,7 @@ const archivePromise = api('results.archive').catch(() => null);
 const hex = (c) => (/^#[0-9a-f]{6}$/i.test(c || '') ? c : '#e9b949');
 const houseByName = (houses, name) => houses.find((h) => h.name === name);
 
-function standings(houses) {
+function standings(houses, adjustments = []) {
   if (!houses.length) return '<p class="hz-empty hz-empty--dark">The house standings will appear here soon.</p>';
   const max = Math.max(...houses.map((h) => Number(h.total_points) || 0), 0);
   return houses.map((h, i) => {
@@ -22,6 +22,9 @@ function standings(houses) {
     const logo = imageUrl(h.logo_url);
     const share = max ? Math.max(4, Math.round((pts / max) * 100)) : 4;
     const behind = i > 0 && max > pts ? `${(max - pts).toLocaleString('en-IN')} behind the leader` : '';
+    const own = adjustments.filter((a) => a.house_id === h.id);
+    const bonus = own.filter((a) => a.points > 0).reduce((t, a) => t + a.points, 0);
+    const penalty = own.filter((a) => a.points < 0).reduce((t, a) => t - a.points, 0);
     return `
       <article class="hz-card${i === 0 && pts > 0 ? ' is-leader' : ''}" style="--hc:${hex(h.color_hex)}">
         <div class="hz-card-top">
@@ -34,6 +37,7 @@ function standings(houses) {
         <p class="hz-points"><strong data-count="${pts}">0</strong><span>points</span></p>
         <div class="hz-bar" aria-hidden="true"><span style="width:${share}%"></span></div>
         <p class="hz-behind">${behind || (i === 0 ? (pts > 0 ? 'Top of the table' : 'No points yet') : 'Level with the leader')}</p>
+        ${bonus || penalty ? `<p class="hz-adj">${bonus ? `<span class="is-bonus">+${bonus} bonus</span>` : ''}${penalty ? `<span class="is-penalty">−${penalty} penalty</span>` : ''}</p>` : ''}
       </article>`;
   }).join('');
 }
@@ -61,8 +65,22 @@ function distribution(houses) {
 const MEDALS = ['gold', 'silver', 'bronze'];
 
 function place(w, i, houses) {
-  const color = hex(houseByName(houses, w.house)?.color_hex);
+  const house = houseByName(houses, w.house);
+  const color = hex(house?.color_hex);
   const pos = Number(w.position) || i + 1;
+  if (w.house_entry) {
+    const logo = imageUrl(house?.logo_url);
+    return `
+    <li class="hz-place hz-place--${MEDALS[pos - 1] || 'other'} hz-place--house" style="--hc:${color}">
+      <span class="hz-medal" title="${esc(ordinal(pos))} place">${pos}</span>
+      <span class="hz-avatar hz-avatar--house">${logo ? `<img src="${esc(logo)}" alt="">` : `<span>${esc((w.house || '?').charAt(0))}</span>`}</span>
+      <span class="hz-who">
+        <strong>${esc(w.house)} House</strong>
+        <small><i></i>Whole house · team entry</small>
+      </span>
+      <span class="hz-gain">+${Number(w.points) || 0}</span>
+    </li>`;
+  }
   return `
     <li class="hz-place hz-place--${MEDALS[pos - 1] || 'other'}" style="--hc:${color}">
       <span class="hz-medal" title="${esc(ordinal(pos))} place">${pos}</span>
@@ -91,12 +109,15 @@ function categoryColumns(winners, houses) {
   if (byCat.size === 1 && byCat.has('')) {
     return `<ol class="hz-podium hz-podium--plain">${winners.map((w, i) => place(w, i, houses)).join('')}</ol>`;
   }
-  const columns = [...CATEGORIES.map((c) => c.name), OPEN_CATEGORY, ''].filter((name) => byCat.has(name) || CATEGORIES.some((c) => c.name === name));
+  // The three class columns appear together whenever any class category has winners; General only when used.
+  const anyClass = CATEGORIES.some((c) => byCat.has(c.name));
+  const columns = [...CATEGORIES.map((c) => c.name), GENERAL_CATEGORY, 'Open', '']
+    .filter((name) => byCat.has(name) || (anyClass && CATEGORIES.some((c) => c.name === name)));
   return `
     <div class="hz-cats hz-cats--${columns.length}">
       ${columns.map((name) => `
         <section class="hz-catcol">
-          <p class="hz-cat"><strong>${esc(name || 'Other')}</strong><span>${esc(classesOf(name))}</span></p>
+          <p class="hz-cat${name === GENERAL_CATEGORY ? ' hz-cat--general' : ''}"><strong>${esc(name || 'Other')}</strong><span>${esc(classesOf(name))}</span></p>
           ${byCat.has(name)
             ? `<ol class="hz-podium">${byCat.get(name).map((w, i) => place(w, i, houses)).join('')}</ol>`
             : '<p class="hz-cat-none">No entries in this category</p>'}
@@ -122,6 +143,50 @@ function results(list, houses) {
       </header>
       ${categoryColumns(c.winners || [], houses)}
     </article>`).join('');
+}
+
+// ── Bonus & penalty points given to houses (discipline etc.) ──
+
+const ADJ_FIRST = 6;
+
+function adjustmentRow(a, houses) {
+  const color = hex(houseByName(houses, a.house)?.color_hex);
+  const bonus = a.points > 0;
+  return `
+    <li class="hz-adj-item ${bonus ? 'is-bonus' : 'is-penalty'}" style="--hc:${color}">
+      <span class="hz-adj-pts">${bonus ? '+' : '−'}${Math.abs(a.points)}</span>
+      <span class="hz-adj-what">
+        <strong>${esc(a.reason)}</strong>
+        <small><i></i>${esc(a.house)} · ${bonus ? 'Bonus' : 'Penalty'}</small>
+      </span>
+      <time>${esc(formatDate(a.date))}</time>
+    </li>`;
+}
+
+function adjustmentsBlock(list, houses) {
+  if (!list.length) {
+    return `<div class="hz-empty">${icon('Shield')}<p>No bonus or penalty points have been given yet.</p></div>`;
+  }
+  const totals = houses.map((h) => {
+    const own = list.filter((a) => a.house === h.name);
+    return {
+      h,
+      bonus: own.filter((a) => a.points > 0).reduce((t, a) => t + a.points, 0),
+      penalty: own.filter((a) => a.points < 0).reduce((t, a) => t - a.points, 0),
+    };
+  });
+  return `
+    <ul class="hz-adj-totals">
+      ${totals.map(({ h, bonus, penalty }) => `
+        <li style="--hc:${hex(h.color_hex)}">
+          <span class="hz-adj-house"><i></i>${esc(h.name)}</span>
+          <span class="is-bonus">${bonus ? `+${bonus}` : '0'}</span>
+          <span class="is-penalty">${penalty ? `−${penalty}` : '0'}</span>
+          <strong>${bonus === penalty ? '0' : `${bonus > penalty ? '+' : '−'}${Math.abs(bonus - penalty)}`}</strong>
+        </li>`).join('')}
+    </ul>
+    <ol class="hz-adj-list" id="hz-adj-list">${list.slice(0, ADJ_FIRST).map((a) => adjustmentRow(a, houses)).join('')}</ol>
+    ${list.length > ADJ_FIRST ? `<button type="button" class="hz-arch-more" id="hz-adj-more">Show all ${list.length} entries</button>` : ''}`;
 }
 
 // ── Past results: every completed competition, searchable ──
@@ -188,7 +253,8 @@ const ordinal = (n) => {
   const v = n % 100;
   return n + (['th', 'st', 'nd', 'rd'][(v - 20) % 10] || ['th', 'st', 'nd', 'rd'][v] || 'th');
 };
-const classesOf = (category) => CATEGORIES.find((c) => c.name === category)?.classes || (category === OPEN_CATEGORY ? 'All classes' : '');
+const classesOf = (category) => CATEGORIES.find((c) => c.name === category)?.classes
+  || (category === GENERAL_CATEGORY ? GENERAL_LABEL : category === 'Open' ? 'All classes' : '');
 
 /** "2026-11-15" → that day at local midnight (new Date("2026-11-15") would be UTC midnight). */
 function localDate(dateStr) {
@@ -265,7 +331,14 @@ export function render(site) {
       </div>
     </section>
 
-    <section class="blk hz-past" id="past-results">
+    <section class="blk hz-adjs" id="bonus-penalty">
+      <div class="wrap">
+        ${sectionHead({ kicker: 'Bonus & penalty', title: 'Points for conduct', text: 'Bonus points reward houses for discipline, cleanliness and good conduct; penalty points are taken away for rule-breaking. Both count in the house totals.' })}
+        <div id="hz-adjustments"></div>
+      </div>
+    </section>
+
+    <section class="blk blk--cream hz-past" id="past-results">
       <div class="wrap">
         ${sectionHead({ kicker: 'Archive', title: 'Past results', text: 'Look up any earlier competition — search by competition, student name, chest number or house.' })}
         <div class="hz-arch-tools" data-reveal>
@@ -293,9 +366,15 @@ export function render(site) {
 export async function mount(root) {
   const data = await Promise.race([dataPromise, new Promise((r) => setTimeout(() => r(null), 6000))]);
   const houses = data?.houses || [];
-  root.querySelector('#hz-standings').innerHTML = data ? standings(houses) : '<p class="hz-empty hz-empty--dark">The leaderboard is unavailable right now. Please try again shortly.</p>';
+  const adjustments = data?.adjustments || [];
+  root.querySelector('#hz-standings').innerHTML = data ? standings(houses, adjustments) : '<p class="hz-empty hz-empty--dark">The leaderboard is unavailable right now. Please try again shortly.</p>';
   root.querySelector('#hz-share').innerHTML = distribution(houses);
   root.querySelector('#hz-results').innerHTML = results(data?.results || [], houses);
+  root.querySelector('#hz-adjustments').innerHTML = adjustmentsBlock(adjustments, houses);
+  root.querySelector('#hz-adj-more')?.addEventListener('click', (e) => {
+    root.querySelector('#hz-adj-list').innerHTML = adjustments.map((a) => adjustmentRow(a, houses)).join('');
+    e.currentTarget.remove();
+  });
   root.querySelector('#hz-upcoming').innerHTML = upcoming(data?.upcoming || []);
   const latestIds = new Set((data?.results || []).map((c) => c.id));
   archivePromise.then((all) => mountArchive(root, all, latestIds, houses));

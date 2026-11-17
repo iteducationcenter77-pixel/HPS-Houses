@@ -5,7 +5,8 @@
 import { api } from './api.js';
 import { formatDate, showToast, escapeHtml, convertGDriveUrl } from './utils.js';
 import { loadAllStudents } from './students.js';
-import { CATEGORIES, OPEN_CATEGORY, categoryOf, inCategory } from '../../shared/categories.js';
+import { CATEGORIES, GENERAL_CATEGORY, GENERAL_LABEL, categoryOf, inCategory } from '../../shared/categories.js';
+import { getHouses } from './houses.js';
 
 export async function getCompetitions() {
   try {
@@ -112,7 +113,7 @@ async function loadCompTable(openModal) {
   }
 
   tbody.innerHTML = comps.map(c => `<tr>
-    <td><strong style="color:var(--white)">${escapeHtml(c.name)}</strong></td>
+    <td><strong style="color:var(--white)">${escapeHtml(c.name)}</strong>${c.format === 'general' ? ' <span class="cat-badge" title="House competition — no class categories">General</span>' : ''}</td>
     <td><span class="badge badge-${(c.type||'other').toLowerCase()}">${escapeHtml(c.type)}</span></td>
     <td>${formatDate(c.competition_date)}</td>
     <td><span class="badge badge-${c.status}">${c.status}</span></td>
@@ -169,6 +170,13 @@ function openCompModal(comp, openModal) {
         </div>
       </div>
       <div class="form-group">
+        <label class="form-label" for="cf-format">Results by *</label>
+        <select class="form-select" id="cf-format">
+          <option value="class"${isEdit && comp.format === 'general' ? '' : ' selected'}>Class categories — Sub Junior, Junior, Senior</option>
+          <option value="general"${isEdit && comp.format === 'general' ? ' selected' : ''}>General — house competition (no class categories)</option>
+        </select>
+      </div>
+      <div class="form-group">
         <label class="form-label">Status</label>
         <select class="form-select" id="cf-status">
           <option value="upcoming" ${isEdit && comp.status === 'upcoming' ? 'selected' : ''}>Upcoming</option>
@@ -190,6 +198,7 @@ function openCompModal(comp, openModal) {
       name: document.getElementById('cf-name').value.trim(),
       type: document.getElementById('cf-type').value,
       competition_date: document.getElementById('cf-date').value,
+      format: document.getElementById('cf-format').value,
       status: document.getElementById('cf-status').value,
       description: document.getElementById('cf-desc').value.trim() || null
     };
@@ -204,6 +213,9 @@ function openCompModal(comp, openModal) {
 }
 
 // ── Results: one competition, winners entered category by category ──
+// Class-category competitions: Sub Junior / Junior / Senior (+ an optional General section).
+// General competitions (house competitions): one General section, where a place can go to a whole
+// house or to a student of any class.
 
 const ordinal = (n) => {
   const v = n % 100;
@@ -211,7 +223,7 @@ const ordinal = (n) => {
 };
 const POINTS_KEY = 'hps-result-points';
 const DEFAULT_POINTS = { 1: 10, 2: 7, 3: 5 };
-const SECTIONS = [...CATEGORIES.map((c) => ({ name: c.name, classes: c.classes })), { name: OPEN_CATEGORY, classes: 'All classes' }];
+const SECTIONS = [...CATEGORIES.map((c) => ({ name: c.name, classes: c.classes })), { name: GENERAL_CATEGORY, classes: GENERAL_LABEL }];
 
 /** Points for 1st/2nd/3rd: this competition's saved results, else the last ones used, else 10/7/5. */
 function startingPoints(existing) {
@@ -222,34 +234,44 @@ function startingPoints(existing) {
 }
 
 async function openResultsModal(comp, openModal) {
-  const [students, existing] = await Promise.all([
+  const [students, existing, houses] = await Promise.all([
     loadAllStudents().catch(() => []),
     getParticipation(comp.id),
+    getHouses(),
   ]);
   const byId = new Map(students.map((s) => [s.id, s]));
+  const housesById = new Map(houses.map((h) => [h.id, h]));
+  const isGeneral = comp.format === 'general';
   const points = startingPoints(existing);
   const pointsFor = (pos) => (pos >= 1 && pos <= 3 ? Number(points[pos]) || 0 : 0);
+
+  const blank = (category, position) => ({ category, student_id: '', house_id: '', position, points_earned: pointsFor(position), auto: true, remarks: '' });
+  const filled = (r) => Boolean(r.student_id || r.house_id);
 
   // Earlier results saved without a category go under the category of the student's class.
   const rows = existing
     .map((p) => ({
-      category: p.category || categoryOf(byId.get(p.student_id)?.class ?? p.students?.class) || OPEN_CATEGORY,
-      student_id: p.student_id,
+      category: p.house_entry ? GENERAL_CATEGORY
+        : (p.category === 'Open' ? GENERAL_CATEGORY : p.category) || categoryOf(byId.get(p.student_id)?.class ?? p.students?.class) || GENERAL_CATEGORY,
+      student_id: p.house_entry ? '' : p.student_id,
+      house_id: p.house_entry ? p.house_id : '',
       position: Number(p.position) || 1,
       points_earned: Number(p.points_earned) || 0,
       remarks: p.remarks || '',
     }))
     .sort((a, b) => a.position - b.position);
   rows.forEach((r) => { r.auto = r.points_earned === pointsFor(r.position); });
-  for (const c of CATEGORIES) {
-    if (!rows.some((r) => r.category === c.name)) {
-      for (const pos of [1, 2, 3]) rows.push({ category: c.name, student_id: '', position: pos, points_earned: pointsFor(pos), auto: true, remarks: '' });
-    }
+  const startWith = isGeneral ? [GENERAL_CATEGORY] : CATEGORIES.map((c) => c.name);
+  for (const name of startWith) {
+    if (!rows.some((r) => r.category === name)) for (const pos of [1, 2, 3]) rows.push(blank(name, pos));
   }
-  let showOpen = rows.some((r) => r.category === OPEN_CATEGORY);
+  let showGeneral = isGeneral || rows.some((r) => r.category === GENERAL_CATEGORY);
 
   openModal('Results — ' + comp.name, `
-    <p class="res-intro">Enter the <strong>1st, 2nd and 3rd</strong> place winners of each category. Search by name, chest no., roll no. or class. Use <strong>+ Add place</strong> for a 4th place or a joint position. House points update when you save.</p>
+    <p class="res-intro">${isGeneral
+      ? 'This is a <strong>General (house) competition</strong>: choose the <strong>house</strong> that came 1st, 2nd and 3rd — or a student of any class for an individual place.'
+      : 'Enter the <strong>1st, 2nd and 3rd</strong> place winners of each category. Search by name, chest no., roll no. or class.'}
+      Use <strong>+ Add place</strong> for a 4th place or a joint position. House points update when you save.</p>
     <div class="res-toolbar">
       <div class="res-points" role="group" aria-label="Points for each place">
         <span class="res-points-title">Points</span>
@@ -257,7 +279,7 @@ async function openResultsModal(comp, openModal) {
           <label class="res-points-item"><span class="res-medal res-medal--${p}">${ordinal(p)}</span>
             <input type="number" min="0" class="form-input" data-points="${p}" value="${pointsFor(p)}" aria-label="Points for ${ordinal(p)} place"></label>`).join('')}
       </div>
-      <label class="res-anyclass"><input type="checkbox" id="res-all-classes"> Allow students from other classes</label>
+      ${isGeneral ? '' : '<label class="res-anyclass"><input type="checkbox" id="res-all-classes"> Allow students from other classes</label>'}
     </div>
     <div id="res-sections" class="res-sections"></div>
     <div class="res-footer">
@@ -278,8 +300,23 @@ async function openResultsModal(comp, openModal) {
       ? `<img class="res-face" src="${escapeHtml(photo)}" alt="" loading="lazy">`
       : `<span class="res-face res-face--initial" style="--hc:${color}">${escapeHtml((s.name || '?').charAt(0))}</span>`;
   };
+  const houseFace = (h) => {
+    const logo = convertGDriveUrl(h.logo_url);
+    return logo
+      ? `<img class="res-face res-face--house" src="${escapeHtml(logo)}" alt="" loading="lazy" style="--hc:${escapeHtml(h.color_hex || '#8a94a6')}">`
+      : `<span class="res-face res-face--initial res-face--house" style="--hc:${escapeHtml(h.color_hex || '#8a94a6')}">${escapeHtml((h.name || '?').charAt(0))}</span>`;
+  };
 
   function pickerHtml(r, i) {
+    const h = r.house_id && housesById.get(r.house_id);
+    if (h) {
+      return `
+        <div class="res-chosen" style="--hc:${escapeHtml(h.color_hex || '#8a94a6')}">
+          ${houseFace(h)}
+          <span class="res-chosen-text"><strong>${escapeHtml(h.name)} House</strong><small>Whole house · team entry</small></span>
+          <button type="button" class="btn btn-secondary btn-sm res-change" data-idx="${i}">Change</button>
+        </div>`;
+    }
     const s = byId.get(r.student_id);
     if (s) {
       return `
@@ -289,9 +326,10 @@ async function openResultsModal(comp, openModal) {
           <button type="button" class="btn btn-secondary btn-sm res-change" data-idx="${i}">Change</button>
         </div>`;
     }
+    const general = r.category === GENERAL_CATEGORY;
     return `
       <div class="res-search-wrap">
-        <input class="form-input res-search" data-idx="${i}" placeholder="Search name, chest no., roll or class…" autocomplete="off" aria-autocomplete="list">
+        <input class="form-input res-search" data-idx="${i}" placeholder="${general ? 'Choose a house, or search a student…' : 'Search name, chest no., roll or class…'}" autocomplete="off" aria-autocomplete="list">
         <div class="res-options" hidden></div>
       </div>`;
   }
@@ -307,7 +345,7 @@ async function openResultsModal(comp, openModal) {
     </div>`;
 
   function summary() {
-    const done = rows.filter((r) => r.student_id);
+    const done = rows.filter(filled);
     const cats = new Set(done.map((r) => r.category)).size;
     document.getElementById('res-summary').textContent = done.length
       ? `${done.length} winner${done.length > 1 ? 's' : ''} in ${cats} categor${cats > 1 ? 'ies' : 'y'} · ${done.reduce((t, r) => t + (r.points_earned || 0), 0)} points`
@@ -315,64 +353,91 @@ async function openResultsModal(comp, openModal) {
   }
 
   function render(focusIdx = null) {
-    box.innerHTML = SECTIONS.filter((sec) => sec.name !== OPEN_CATEGORY || showOpen).map((sec) => {
+    const sections = SECTIONS.filter((sec) => (sec.name === GENERAL_CATEGORY ? showGeneral : !isGeneral || rows.some((r) => r.category === sec.name)));
+    box.innerHTML = sections.map((sec) => {
       const items = rows.map((r, i) => ({ r, i })).filter(({ r }) => r.category === sec.name);
-      const filled = items.filter(({ r }) => r.student_id).length;
+      const count = items.filter(({ r }) => filled(r)).length;
       return `
-        <section class="res-section">
+        <section class="res-section${sec.name === GENERAL_CATEGORY ? ' res-section--general' : ''}">
           <header class="res-section-head">
             <div><h4>${escapeHtml(sec.name)}</h4><span>${escapeHtml(sec.classes)}</span></div>
-            <span class="res-filled${filled ? ' is-on' : ''}">${filled ? `${filled} winner${filled > 1 ? 's' : ''}` : 'No winners yet'}</span>
+            <span class="res-filled${count ? ' is-on' : ''}">${count ? `${count} winner${count > 1 ? 's' : ''}` : 'No winners yet'}</span>
           </header>
           <div class="res-rows">${items.map(({ r, i }) => rowHtml(r, i)).join('') || '<p class="res-empty">No places — add one below.</p>'}</div>
           <button type="button" class="res-add" data-cat="${escapeHtml(sec.name)}">+ Add place</button>
         </section>`;
-    }).join('') + (showOpen ? '' : '<button type="button" class="res-add-open" id="res-add-open">+ Add an Open section (any class, e.g. Nursery – I)</button>');
+    }).join('') + (showGeneral ? '' : '<button type="button" class="res-add-open" id="res-add-general">+ Add a General section (a whole house, or a student of any class)</button>');
     summary();
     if (focusIdx !== null) box.querySelector(`.res-search[data-idx="${focusIdx}"]`)?.focus();
   }
 
+  /** Matches for one row: houses first (General only), then students. */
   function search(text, idx) {
     const words = text.toLowerCase().split(/\s+/).filter(Boolean);
-    if (!words.length) return [];
-    const taken = new Set(rows.filter((r, i) => i !== idx && r.student_id).map((r) => r.student_id));
     const category = rows[idx].category;
-    return students.filter((s) => {
-      if (taken.has(s.id)) return false;
-      if (!anyClass() && !inCategory(s.class, category)) return false;
+    const general = category === GENERAL_CATEGORY;
+    const takenStudents = new Set(rows.filter((r, i) => i !== idx && r.student_id).map((r) => r.student_id));
+    const takenHouses = new Set(rows.filter((r, i) => i !== idx && r.house_id).map((r) => r.house_id));
+    const houseHits = general
+      ? houses.filter((h) => !takenHouses.has(h.id) && words.every((w) => `${h.name} house`.toLowerCase().includes(w)))
+      : [];
+    const studentHits = words.length ? students.filter((s) => {
+      if (takenStudents.has(s.id)) return false;
+      if (!general && !anyClass() && !inCategory(s.class, category)) return false;
       const hay = `${s.name} ${s.class} ${s.roll_number} ${s.chest_number || ''} ${s.houses?.name || ''}`.toLowerCase();
       return words.every((w) => hay.includes(w));
-    }).slice(0, 8);
+    }).slice(0, 8) : [];
+    return { houseHits, studentHits };
   }
 
   function showOptions(input) {
     const idx = Number(input.dataset.idx);
     const list = input.nextElementSibling;
-    if (!input.value.trim()) { list.hidden = true; return; }
-    const found = search(input.value, idx);
+    const general = rows[idx].category === GENERAL_CATEGORY;
+    if (!input.value.trim() && !general) { list.hidden = true; return; }
+    const { houseHits, studentHits } = search(input.value, idx);
     const category = rows[idx].category;
+    const options = [
+      ...houseHits.map((h) => `
+        <button type="button" class="res-option" data-house="${escapeHtml(h.id)}" data-idx="${idx}">
+          ${houseFace(h)}<span><strong>${escapeHtml(h.name)} House</strong><small>Whole house · team entry</small></span>
+        </button>`),
+      ...studentHits.map((s) => `
+        <button type="button" class="res-option" data-pick="${escapeHtml(s.id)}" data-idx="${idx}">
+          ${face(s)}<span><strong>${escapeHtml(s.name)}</strong><small>${escapeHtml(meta(s))}</small></span>
+        </button>`),
+    ];
     list.hidden = false;
-    list.innerHTML = found.length
-      ? found.map((s, k) => `
-          <button type="button" class="res-option${k === 0 ? ' is-active' : ''}" data-pick="${escapeHtml(s.id)}" data-idx="${idx}">
-            ${face(s)}<span><strong>${escapeHtml(s.name)}</strong><small>${escapeHtml(meta(s))}</small></span>
-          </button>`).join('')
-      : `<div class="res-none">No student found${category !== OPEN_CATEGORY && !anyClass() ? ` in ${escapeHtml(category)}` : ''} — try a chest number or class.</div>`;
+    list.innerHTML = options.length
+      ? options.join('').replace('class="res-option"', 'class="res-option is-active"')
+      : `<div class="res-none">No ${general ? 'house or student' : 'student'} found${!general && !anyClass() ? ` in ${escapeHtml(category)}` : ''} — try a chest number or class.</div>`;
   }
 
-  function pick(idx, id) {
-    rows[idx].student_id = id;
+  function pick(idx, { student, house }) {
+    rows[idx].student_id = student || '';
+    rows[idx].house_id = house || '';
     render();
     // Jump to the next empty place, so 1st → 2nd → 3rd can be filled straight through.
-    const next = rows.findIndex((r, i) => i > idx && r.category === rows[idx].category && !r.student_id);
-    if (next >= 0) box.querySelector(`.res-search[data-idx="${next}"]`)?.focus();
+    const next = rows.findIndex((r, i) => i > idx && r.category === rows[idx].category && !filled(r));
+    if (next >= 0) {
+      const input = box.querySelector(`.res-search[data-idx="${next}"]`);
+      input?.focus();
+      if (input && rows[next].category === GENERAL_CATEGORY) showOptions(input);
+    }
   }
+  const pickOption = (option) => pick(Number(option.dataset.idx), { student: option.dataset.pick, house: option.dataset.house });
 
   box.addEventListener('input', (e) => {
     const t = e.target;
     const idx = Number(t.dataset.idx);
     if (t.classList.contains('res-search')) showOptions(t);
     if (t.classList.contains('res-pts')) { rows[idx].points_earned = Math.max(0, parseInt(t.value, 10) || 0); rows[idx].auto = false; summary(); }
+  });
+
+  // In a General row, the four houses are offered as soon as the box is focused.
+  box.addEventListener('focusin', (e) => {
+    const input = e.target.closest('.res-search');
+    if (input && rows[Number(input.dataset.idx)].category === GENERAL_CATEGORY) showOptions(input);
   });
 
   box.addEventListener('change', (e) => {
@@ -399,7 +464,7 @@ async function openResultsModal(comp, openModal) {
     } else if (e.key === 'Enter') {
       e.preventDefault();
       const chosen = options[current >= 0 ? current : 0];
-      if (chosen) pick(Number(input.dataset.idx), chosen.dataset.pick);
+      if (chosen) pickOption(chosen);
     } else if (e.key === 'Escape') {
       list.hidden = true;
     }
@@ -408,25 +473,25 @@ async function openResultsModal(comp, openModal) {
   // mousedown (not click) so the choice registers before the search box loses focus
   box.addEventListener('mousedown', (e) => {
     const option = e.target.closest('.res-option');
-    if (option) { e.preventDefault(); pick(Number(option.dataset.idx), option.dataset.pick); }
+    if (option) { e.preventDefault(); pickOption(option); }
   });
 
   box.addEventListener('click', (e) => {
     const btn = e.target.closest('button');
     if (!btn) return;
     const idx = Number(btn.dataset.idx);
-    if (btn.classList.contains('res-change')) { rows[idx].student_id = ''; render(idx); }
+    if (btn.classList.contains('res-change')) { rows[idx].student_id = ''; rows[idx].house_id = ''; render(idx); }
     if (btn.classList.contains('res-del')) { rows.splice(idx, 1); render(); }
     if (btn.classList.contains('res-add')) {
       const category = btn.dataset.cat;
       const position = Math.min(10, Math.max(0, ...rows.filter((r) => r.category === category).map((r) => r.position)) + 1);
-      rows.push({ category, student_id: '', position, points_earned: pointsFor(position), auto: true, remarks: '' });
+      rows.push(blank(category, position));
       render(rows.length - 1);
     }
-    if (btn.id === 'res-add-open') {
-      showOpen = true;
-      rows.push({ category: OPEN_CATEGORY, student_id: '', position: 1, points_earned: pointsFor(1), auto: true, remarks: '' });
-      render(rows.length - 1);
+    if (btn.id === 'res-add-general') {
+      showGeneral = true;
+      for (const pos of [1, 2, 3]) rows.push(blank(GENERAL_CATEGORY, pos));
+      render(rows.length - 3);
     }
   });
 
@@ -451,7 +516,7 @@ async function openResultsModal(comp, openModal) {
     });
   });
 
-  document.getElementById('res-all-classes').addEventListener('change', () => {
+  document.getElementById('res-all-classes')?.addEventListener('change', () => {
     box.querySelectorAll('.res-search').forEach((input) => { if (input.value.trim()) showOptions(input); });
   });
 
@@ -459,8 +524,8 @@ async function openResultsModal(comp, openModal) {
 
   const saveBtn = document.getElementById('save-results-btn');
   saveBtn.addEventListener('click', async () => {
-    const results = rows.filter((r) => r.student_id).map((r) => ({
-      student_id: r.student_id,
+    const results = rows.filter(filled).map((r) => ({
+      ...(r.house_id ? { house_entry: true, house_id: r.house_id } : { student_id: r.student_id }),
       category: r.category,
       position: r.position,
       points_earned: r.points_earned || 0,
@@ -476,4 +541,3 @@ async function openResultsModal(comp, openModal) {
     }
   });
 }
-

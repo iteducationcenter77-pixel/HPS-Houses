@@ -12,6 +12,7 @@ import { login, checkSession, logout, changePassword, canLocalReset, resetPasswo
 import { renderHousesPage, getHouses } from './js/houses.js';
 import { renderStudentsPage } from './js/students.js';
 import { renderCompetitionsPage } from './js/competitions.js';
+import { renderPointsPage } from './js/points.js';
 import { showToast, loadSchoolLogo } from './js/utils.js';
 import { api } from './js/api.js';
 import { renderWebsitePage, hasUnsavedWebsiteChanges, forgetWebsiteEditor } from './js/site-editor.js';
@@ -159,7 +160,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Update title
     const titles = {
       dashboard: 'Dashboard', website: 'Website', enquiries: 'Enquiries', houses: 'Houses',
-      students: 'Students', competitions: 'Competitions', settings: 'Settings',
+      students: 'Students', competitions: 'Competitions', points: 'Bonus & Penalty', settings: 'Settings',
     };
     document.getElementById('page-title').textContent = titles[page] || 'Dashboard';
 
@@ -178,6 +179,7 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'houses': renderHousesPage(content, openModal); break;
       case 'students': renderStudentsPage(content, openModal); break;
       case 'competitions': renderCompetitionsPage(content, openModal); break;
+      case 'points': renderPointsPage(content); break;
       case 'settings': renderSettingsPage(content, openModal); break;
       default: renderDashboardPage(content);
     }
